@@ -48,17 +48,17 @@ Instala las librerías necesarias:
 
 py -m pip install fastapi uvicorn google-genai pandas pillow python-multipart
 ```
-CONFIGURAR API KEY:
+#CONFIGURAR API KEY:
 
-Abre el archivo main.py.
+#Abre el archivo main.py.
 
-Busca la variable GOOGLE_API_KEY.
+#Busca la variable GOOGLE_API_KEY.
 
-Borra el texto de ejemplo y pega tu propia clave de Google AI Studio.
+#Borra el texto de ejemplo y pega tu propia clave de Google AI Studio.
 
-Nota: ¡No subas tu clave real al repositorio de GitHub!
+#Nota: ¡No subas tu clave real al repositorio de GitHub!
 
-Enciende el servidor:
+#Enciende el servidor:
 
 ```Bash
 
@@ -79,16 +79,16 @@ flutter pub get
 ```
 CONFIGURACIÓN DE IP (¡Paso Vital!): Para que el celular se comunique con tu PC, necesitas la IP local.
 
-En tu PC, abre terminal y escribe ipconfig. Copia la IPv4 (ej: 192.168.1.15).
+#En tu PC, abre terminal y escribe ipconfig. Copia la IPv4 (ej: 192.168.1.15).
 
-En VS Code, abre lib/main.dart.
+#En VS Code, abre lib/main.dart.
 
-Busca la línea: var url = Uri.parse(...).
+#Busca la línea: var url = Uri.parse(...).
 
-Reemplaza la IP por la tuya. Ejemplo:
-
-Dart
+#Reemplaza la IP por la tuya. Ejemplo:
 ```
+Dart
+
 var url = Uri.parse("[http://192.168.1.15:8000/escanear/](http://192.168.1.15:8000/escanear/)");
 Ejecuta la app (con celular conectado o emulador):
 
@@ -97,12 +97,12 @@ Bash
 flutter run
 ```
 📝 Cómo usar
-Verifica que el Servidor Python esté corriendo (terminal abierta).
+#Verifica que el Servidor Python esté corriendo (terminal abierta).
 
-En la App, presiona "Cámara" y toma la foto del recibo.
+#En la App, presiona "Cámara" y toma la foto del recibo.
 
-Presiona "Analizar".
+#Presiona "Analizar".
 
-Espera unos segundos y verás el RUC, Fecha y Montos en pantalla.
+#Espera unos segundos y verás el RUC, Fecha y Montos en pantalla.
 
-Los datos se guardan automáticamente en backend_facturas/libro_contable.csv.
+#Los datos se guardan automáticamente en backend_facturas/libro_contable.csv.
