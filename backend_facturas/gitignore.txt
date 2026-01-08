@@ -1,0 +1,11 @@
+# Ignorar librerias pesadas
+venv/
+__pycache__/
+
+# Ignorar archivos de entorno y claves
+.env
+
+# Ignorar base de datos local y fotos
+libro_contable.csv
+*.jpg
+*.png
