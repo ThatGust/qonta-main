@@ -31,17 +31,23 @@ Abre una terminal y ejecuta:
 git clone [https://github.com/TU_USUARIO/NOMBRE_DEL_REPO.git](https://github.com/TU_USUARIO/NOMBRE_DEL_REPO.git)
 cd Sistema_Facturas_IA
 
+```
+
 ### 2. Configurar el Backend (Servidor)
 Entra a la carpeta del backend:
 
-Bash
+```Bash
 
 cd backend_facturas
+
+```
+
 Instala las librerías necesarias:
 
-Bash
+```Bash
 
 py -m pip install fastapi uvicorn google-genai pandas pillow python-multipart
+```
 CONFIGURAR API KEY:
 
 Abre el archivo main.py.
@@ -54,22 +60,23 @@ Nota: ¡No subas tu clave real al repositorio de GitHub!
 
 Enciende el servidor:
 
-Bash
+```Bash
 
 py main.py
+```
 Debe decir: 🚀 Servidor con Gemini Flash Latest listo...
 
 3. Configurar el Frontend (App Móvil)
 Abre una nueva terminal (sin cerrar la del servidor) y entra a la carpeta de la app:
 
-Bash
+```Bash
 
 cd app_facturas
 Descarga las dependencias de Flutter:
-
 Bash
 
 flutter pub get
+```
 CONFIGURACIÓN DE IP (¡Paso Vital!): Para que el celular se comunique con tu PC, necesitas la IP local.
 
 En tu PC, abre terminal y escribe ipconfig. Copia la IPv4 (ej: 192.168.1.15).
@@ -81,13 +88,14 @@ Busca la línea: var url = Uri.parse(...).
 Reemplaza la IP por la tuya. Ejemplo:
 
 Dart
-
+```
 var url = Uri.parse("[http://192.168.1.15:8000/escanear/](http://192.168.1.15:8000/escanear/)");
 Ejecuta la app (con celular conectado o emulador):
 
 Bash
 
 flutter run
+```
 📝 Cómo usar
 Verifica que el Servidor Python esté corriendo (terminal abierta).
 
