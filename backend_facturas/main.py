@@ -11,7 +11,7 @@ from google import genai
 from google.genai import types
 
 # --- TU API KEY ---
-GOOGLE_API_KEY = "TU_API_KEY_AQUI"
+GOOGLE_API_KEY = "AIzaSyD03rkw8XJu32cAGmcVhGxgEaOPEKQLm7I"
 
 client = genai.Client(api_key=GOOGLE_API_KEY)
 app = FastAPI()
@@ -271,4 +271,4 @@ async def registrar_venta_sistema(venta: VentaSistema):
 
 if __name__ == "__main__":
     print("🚀 BACKEND COMPLETO (Compras + Ventas Manuales + Ventas Sistema) LISTO")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="192.168.31.102", port=8000)

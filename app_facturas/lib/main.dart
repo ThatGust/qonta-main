@@ -5,270 +5,435 @@ import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 
 void main() {
-  runApp(const MyApp());
+  runApp(const QontaApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+// --- COLORES DE LA MARCA ---
+class QontaColors {
+  static const Color primaryBlue = Color(0xFF0D47A1); // Azul oscuro
+  static const Color cardBlue = Color(0xFF1565C0);    // Azul botones
+  static const Color accentYellow = Color(0xFFFFA000); // Mostaza/Amarillo
+  static const Color backgroundBlue = Color(0xFF0D47A1); 
+}
+
+class QontaApp extends StatelessWidget {
+  const QontaApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Sistema Contable IA',
+      title: 'Qonta',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
+        fontFamily: 'Roboto',
+        colorScheme: ColorScheme.fromSeed(seedColor: QontaColors.primaryBlue),
       ),
-      home: const HomeScreen(),
+      home: const DashboardScreen(),
     );
   }
 }
 
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+class DashboardScreen extends StatefulWidget {
+  const DashboardScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  // --- CONFIGURACIÓN ---
-  // ⚠️ IMPORTANTE: Cambia esto por la IP de tu computadora (ipconfig)
+class _DashboardScreenState extends State<DashboardScreen> {
+  // ⚠️⚠️⚠️ CAMBIA ESTO POR TU IP (ipconfig) ⚠️⚠️⚠️
   final String ipAddress = "192.168.31.102"; 
   
-  File? _image;
   bool _isLoading = false;
-  Map<String, dynamic>? _resultado;
-  String _tipoOperacion = ""; // 'compra' o 'venta'
-
   final ImagePicker _picker = ImagePicker();
+  int _selectedIndex = 0;
 
-  // Función principal: Toma la foto y la envía al endpoint correcto
-  Future<void> _procesarImagen({required bool esVenta}) async {
+  // --- LÓGICA DEL BACKEND (Cámara -> Python) ---
+  Future<void> _procesarOperacion(bool esVenta) async {
+    // 1. Cerrar el menú de selección si está abierto
+    Navigator.of(context).pop(); 
+
+    // 2. Abrir Cámara
     final XFile? photo = await _picker.pickImage(source: ImageSource.camera);
-
     if (photo == null) return;
 
-    setState(() {
-      _image = File(photo.path);
-      _isLoading = true;
-      _resultado = null;
-      _tipoOperacion = esVenta ? "venta" : "compra";
-    });
+    setState(() => _isLoading = true);
 
-    // Definimos a qué endpoint ir
+    // 3. Preparar Envío
     String endpoint = esVenta ? "escanear-venta" : "escanear-compra";
     var uri = Uri.parse("http://$ipAddress:8000/$endpoint/");
 
     try {
       var request = http.MultipartRequest('POST', uri);
-      request.files.add(await http.MultipartFile.fromPath('file', _image!.path));
-
+      request.files.add(await http.MultipartFile.fromPath('file', photo.path));
+      
       var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200) {
         var data = json.decode(response.body);
-        setState(() {
-          _resultado = data['datos']; // Accedemos al objeto 'datos' del JSON
-          _isLoading = false;
-        });
+        // 4. Mostrar Resultado en una ventana flotante
+        _mostrarResultadoDialog(data['datos'], esVenta);
       } else {
-        _mostrarError("Error del servidor: ${response.statusCode}");
+        _mostrarSnackBar("Error del servidor: ${response.statusCode}", Colors.red);
       }
     } catch (e) {
-      _mostrarError("Error de conexión: $e");
+      _mostrarSnackBar("Error de conexión. Revisa la IP.", Colors.red);
+    } finally {
+      setState(() => _isLoading = false);
     }
   }
 
-  void _mostrarError(String mensaje) {
-    setState(() {
-      _isLoading = false;
-    });
+  void _mostrarSnackBar(String mensaje, Color color) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(mensaje), backgroundColor: Colors.red),
+      SnackBar(content: Text(mensaje), backgroundColor: color),
+    );
+  }
+
+  // --- MENÚ PARA ELEGIR TIPO DE ESCANEO ---
+  void _mostrarMenuEscaneo() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          height: 200,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text("¿Qué deseas registrar?", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => _procesarOperacion(false), // Es Compra/Gasto
+                      icon: const Icon(Icons.receipt_long),
+                      label: const Text("GASTO"),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: QontaColors.accentYellow,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 15),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 15),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => _procesarOperacion(true), // Es Venta
+                      icon: const Icon(Icons.attach_money),
+                      label: const Text("VENTA"),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: QontaColors.cardBlue,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 15),
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // --- DIALOGO DE RESULTADO (TICKET) ---
+  void _mostrarResultadoDialog(Map<String, dynamic> datos, bool esVenta) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          contentPadding: EdgeInsets.zero,
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(15),
+                decoration: BoxDecoration(
+                  color: esVenta ? QontaColors.cardBlue : QontaColors.accentYellow,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                child: Column(
+                  children: [
+                    const Icon(Icons.check_circle, color: Colors.white, size: 40),
+                    const SizedBox(height: 5),
+                    Text(
+                      esVenta ? "VENTA REGISTRADA" : "GASTO REGISTRADO",
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    )
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    _infoRow("Fecha", datos['fecha_emision']),
+                    _infoRow("RUC/Doc", esVenta ? datos['cliente_nro_doc'] : datos['proveedor_ruc']),
+                    _infoRow("Nombre", esVenta ? datos['cliente_razon_social'] : datos['proveedor_razon_social']),
+                    const Divider(),
+                    const Text("TOTAL", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    Text("S/ ${datos['monto_total']}", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 15),
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Cerrar"),
+                ),
+              )
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _infoRow(String label, dynamic val) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+          Expanded(child: Text(val?.toString() ?? "-", textAlign: TextAlign.end, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+        ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Escáner Contable SIRE"),
-        centerTitle: true,
-        backgroundColor: Colors.blue[800],
-        foregroundColor: Colors.white,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              "Selecciona el tipo de operación:",
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 20),
-
-            // --- BOTONES DE ACCIÓN ---
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () => _procesarImagen(esVenta: false),
-                    icon: const Icon(Icons.shopping_cart, size: 30),
-                    label: const Text("REGISTRAR\nCOMPRA"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange[100],
-                      foregroundColor: Colors.orange[900],
-                      padding: const EdgeInsets.symmetric(vertical: 20),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 15),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () => _procesarImagen(esVenta: true),
-                    icon: const Icon(Icons.attach_money, size: 30),
-                    label: const Text("REGISTRAR\nVENTA"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green[100],
-                      foregroundColor: Colors.green[900],
-                      padding: const EdgeInsets.symmetric(vertical: 20),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 30),
-
-            // --- VISTA PREVIA DE IMAGEN ---
-            if (_image != null)
-              Container(
-                height: 250,
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: Image.file(_image!, fit: BoxFit.cover),
-                ),
-              ),
-
-            const SizedBox(height: 20),
-
-            // --- INDICADOR DE CARGA ---
-            if (_isLoading)
-              const Center(
-                child: Column(
-                  children: [
-                    CircularProgressIndicator(),
-                    SizedBox(height: 10),
-                    Text("Gemini analizando documento..."),
-                  ],
-                ),
-              ),
-
-            // --- RESULTADOS ---
-            if (_resultado != null) _buildResultCard(),
-          ],
+      backgroundColor: QontaColors.backgroundBlue,
+      // --- BOTÓN FLOTANTE CON FUNCIONALIDAD ---
+      floatingActionButton: Container(
+        height: 70, width: 70,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 4),
         ),
-      ),
-    );
-  }
-
-  // Widget para mostrar los datos dependiendo si es Compra o Venta
-  Widget _buildResultCard() {
-    return Card(
-      elevation: 4,
-      color: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  _tipoOperacion == 'venta' ? "VENTA MANUAL" : "GASTO / COMPRA",
-                  style: TextStyle(
-                    color: _tipoOperacion == 'venta' ? Colors.green : Colors.orange,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-                const Icon(Icons.check_circle, color: Colors.green),
-              ],
-            ),
-            const Divider(),
-            
-            // Campos comunes
-            _infoRow("Fecha:", _resultado?['fecha_emision']),
-            _infoRow("Tipo:", _resultado?['tipo_comprobante'] == '01' ? 'Factura' : 'Boleta'),
-            _infoRow("Doc:", "${_resultado?['serie']} - ${_resultado?['numero']}"),
-
-            const Divider(),
-            
-            // Campos Específicos
-            if (_tipoOperacion == 'compra') ...[
-              const Text("DATOS PROVEEDOR:", style: TextStyle(fontWeight: FontWeight.bold)),
-              _infoRow("RUC:", _resultado?['proveedor_ruc']),
-              _infoRow("Razón Social:", _resultado?['proveedor_razon_social']),
-              _infoRow("Clasificación:", _resultado?['clasificacion_bien_servicio']),
-            ] else ...[
-              const Text("DATOS CLIENTE:", style: TextStyle(fontWeight: FontWeight.bold)),
-              _infoRow("Tipo Doc:", _resultado?['cliente_tipo_doc'] == '1' ? 'DNI' : 'RUC'),
-              _infoRow("Número:", _resultado?['cliente_nro_doc']),
-              _infoRow("Nombre:", _resultado?['cliente_razon_social']),
-            ],
-
-            const Divider(),
-            
-            // Totales
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: FloatingActionButton(
+          onPressed: _isLoading ? null : _mostrarMenuEscaneo, // <--- AQUI ESTÁ LA MAGIA
+          backgroundColor: QontaColors.cardBlue,
+          elevation: 0,
+          shape: const CircleBorder(),
+          child: _isLoading 
+            ? const CircularProgressIndicator(color: Colors.white)
+            : const Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text("TOTAL:", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  Text(
-                    "S/ ${_resultado?['monto_total']}",
-                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.blue),
-                  ),
+                  Icon(Icons.document_scanner_outlined, size: 28, color: Colors.white),
+                  Text("Escanear", style: TextStyle(fontSize: 8, color: Colors.white))
                 ],
               ),
-            )
+        ),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+
+      bottomNavigationBar: _buildBottomAppBar(),
+
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            _buildHeader(), // HEADER CORREGIDO
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+                ),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text("Estado de la empresa", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: QontaColors.primaryBlue)),
+                          Icon(Icons.notifications_none, color: QontaColors.accentYellow),
+                        ],
+                      ),
+                      const SizedBox(height: 15),
+                      _buildCompanyStatusCard(), // TARJETA CORREGIDA
+                      const SizedBox(height: 25),
+                      _buildSectionHeader("Ingresos", Icons.arrow_circle_up, QontaColors.cardBlue),
+                      const SizedBox(height: 10),
+                      // Datos de ejemplo
+                      _TransactionItem(type: "B", title: "Boleta - Miguel Torres", amount: "S/ 150.00", color: QontaColors.cardBlue),
+                      const SizedBox(height: 10),
+                      _TransactionItem(type: "F", title: "Factura - Mevascorp", amount: "S/ 365.00", color: QontaColors.cardBlue),
+                      const SizedBox(height: 10),
+                      _buildSectionHeader("Egresos", Icons.arrow_circle_down, QontaColors.accentYellow),
+                      const SizedBox(height: 10),
+                      _TransactionItem(type: "F", title: "Factura - Pulisac", amount: "S/ 150.00", color: QontaColors.accentYellow),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _infoRow(String label, dynamic value) {
+  // --- WIDGETS DE UI (Corregidos sin imagenes externas) ---
+  Widget _buildHeader() {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
+          // LOGO (Este si debe existir en assets/logo.png)
           SizedBox(
-            width: 100, 
-            child: Text(label, style: const TextStyle(fontWeight: FontWeight.w500, color: Colors.grey)),
+            height: 160,
+            child: Image.asset('assets/logo.png', fit: BoxFit.contain, 
+              errorBuilder: (c,o,s) => const Text("Qonta", style: TextStyle(color: Colors.white, fontSize: 24))), 
           ),
-          Expanded(
-            child: Text(
-              value?.toString() ?? "---",
-              style: const TextStyle(fontWeight: FontWeight.bold),
+          Row(
+            children: [
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text("Bienvenido", style: TextStyle(color: Colors.white70, fontSize: 12)),
+                  Text("Oscar", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                  SizedBox(height: 2),
+                  Chip(
+                    label: Text("Basic", style: TextStyle(color: Colors.white, fontSize: 10)),
+                    backgroundColor: QontaColors.accentYellow,
+                    padding: EdgeInsets.zero,
+                    labelPadding: EdgeInsets.symmetric(horizontal: 8, vertical: -4),
+                    visualDensity: VisualDensity.compact,
+                    side: BorderSide.none,
+                    shape: StadiumBorder(),
+                  )
+                ],
+              ),
+              const SizedBox(width: 10),
+              // AVATAR (Ahora es un Icono, no pide imagen)
+              Container(
+                width: 50, height: 50,
+                decoration: BoxDecoration(
+                  border: Border.all(color: QontaColors.accentYellow, width: 2),
+                  borderRadius: BorderRadius.circular(10),
+                  color: Colors.white24,
+                ),
+                child: const Icon(Icons.person, color: Colors.white, size: 30),
+              )
+            ],
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompanyStatusCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), spreadRadius: 2, blurRadius: 10, offset: const Offset(0, 3))],
+        border: Border.all(color: Colors.grey.shade200)
+      ),
+      child: Row(
+        children: [
+          // LOGO EMPRESA (Ahora es un Icono)
+          Container(
+            width: 60, height: 60,
+            decoration: BoxDecoration(
+              color: Colors.yellow[100],
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.store_mall_directory, color: Colors.black87, size: 30),
+          ),
+          const SizedBox(width: 15),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text("Mi Empresa", style: TextStyle(fontWeight: FontWeight.bold, height: 1.1)),
+                Text("Arequipa", style: TextStyle(fontSize: 10, color: Colors.grey)),
+              ],
             ),
           ),
+          const Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text("Utilidad Neta", style: TextStyle(color: QontaColors.primaryBlue, fontWeight: FontWeight.bold)),
+              Text("S/ 5,845.20", style: TextStyle(color: QontaColors.primaryBlue, fontSize: 20, fontWeight: FontWeight.bold)),
+            ],
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title, IconData icon, Color color) {
+    return Row(
+      children: [
+        Text(title, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16)),
+        const SizedBox(width: 5),
+        Icon(icon, color: color, size: 20),
+      ],
+    );
+  }
+
+  Widget _buildBottomAppBar() {
+    return BottomAppBar(
+      shape: const CircularNotchedRectangle(),
+      notchMargin: 8.0,
+      color: QontaColors.primaryBlue,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          const Icon(Icons.home, color: QontaColors.accentYellow, size: 28),
+          const Icon(Icons.menu_book, color: Colors.white, size: 28),
+          const SizedBox(width: 40), 
+          const Icon(Icons.groups, color: Colors.white, size: 28),
+          const Icon(Icons.bar_chart, color: Colors.white, size: 28),
+        ],
+      ),
+    );
+  }
+}
+
+class _TransactionItem extends StatelessWidget {
+  final String type;
+  final String title;
+  final String amount;
+  final Color color;
+
+  const _TransactionItem({required this.type, required this.title, required this.amount, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(15)),
+      child: Row(
+        children: [
+          Container(
+            width: 35, height: 35,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(border: Border.all(color: Colors.white, width: 2), borderRadius: BorderRadius.circular(8)),
+            child: Text(type, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+          ),
+          const SizedBox(width: 15),
+          Expanded(child: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500))),
+          Text(amount, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         ],
       ),
     );
