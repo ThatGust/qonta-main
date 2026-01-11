@@ -43,7 +43,7 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   // ⚠️⚠️⚠️ CAMBIA ESTO POR TU IP (ipconfig) ⚠️⚠️⚠️
-  final String ipAddress = "192.168.31.102"; 
+  final String ipAddress = "192.168.X.X"; 
   
   bool _isLoading = false;
   final ImagePicker _picker = ImagePicker();

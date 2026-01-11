@@ -271,4 +271,4 @@ async def registrar_venta_sistema(venta: VentaSistema):
 
 if __name__ == "__main__":
     print("🚀 BACKEND COMPLETO (Compras + Ventas Manuales + Ventas Sistema) LISTO")
-    uvicorn.run(app, host="192.168.31.102", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
