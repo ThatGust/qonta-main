@@ -1,174 +1,274 @@
+import 'dart:convert';
 import 'dart:io';
-import 'dart:convert'; // Para entender el JSON que manda Python
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 
 void main() {
-  runApp(MaterialApp(
-    debugShowCheckedModeBanner: false,
-    theme: ThemeData(primarySwatch: Colors.indigo), // Color corporativo
-    home: FacturaScreen(),
-  ));
+  runApp(const MyApp());
 }
 
-class FacturaScreen extends StatefulWidget {
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
   @override
-  _FacturaScreenState createState() => _FacturaScreenState();
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Sistema Contable IA',
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        useMaterial3: true,
+      ),
+      home: const HomeScreen(),
+    );
+  }
 }
 
-class _FacturaScreenState extends State<FacturaScreen> {
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  // --- CONFIGURACIÓN ---
+  // ⚠️ IMPORTANTE: Cambia esto por la IP de tu computadora (ipconfig)
+  final String ipAddress = "192.168.31.102"; 
+  
   File? _image;
-  final picker = ImagePicker();
-  bool _isLoading = false; // Para mostrar el círculo de carga
-  Map<String, dynamic>? _datosFactura; // Aquí guardaremos lo que responda la IA
+  bool _isLoading = false;
+  Map<String, dynamic>? _resultado;
+  String _tipoOperacion = ""; // 'compra' o 'venta'
 
-  // 1. FUNCION PARA TOMAR FOTO
-  Future getImage() async {
-    final pickedFile = await picker.pickImage(source: ImageSource.camera);
+  final ImagePicker _picker = ImagePicker();
 
-    setState(() {
-      if (pickedFile != null) {
-        _image = File(pickedFile.path);
-        _datosFactura = null; // Limpiamos datos anteriores
-      }
-    });
-  }
+  // Función principal: Toma la foto y la envía al endpoint correcto
+  Future<void> _procesarImagen({required bool esVenta}) async {
+    final XFile? photo = await _picker.pickImage(source: ImageSource.camera);
 
-  // 2. FUNCION PARA ENVIAR AL SERVIDOR
-  Future uploadImage() async {
-    if (_image == null) return;
+    if (photo == null) return;
 
     setState(() {
-      _isLoading = true; // Empieza a girar el círculo
+      _image = File(photo.path);
+      _isLoading = true;
+      _resultado = null;
+      _tipoOperacion = esVenta ? "venta" : "compra";
     });
 
-    // --- OJO AQUI: CONFIGURACIÓN DE IP ---
-    // Si usas EMULADOR usa: "http://10.0.2.2:8000/escanear/"
-    // Si usas CELULAR REAL usa la IP de tu PC: "http://192.168.1.XX:8000/escanear/"
-    String urlServidor = "http://192.168.31.102:8000/escanear/"; 
+    // Definimos a qué endpoint ir
+    String endpoint = esVenta ? "escanear-venta" : "escanear-compra";
+    var uri = Uri.parse("http://$ipAddress:8000/$endpoint/");
 
     try {
-      var request = http.MultipartRequest('POST', Uri.parse(urlServidor));
+      var request = http.MultipartRequest('POST', uri);
       request.files.add(await http.MultipartFile.fromPath('file', _image!.path));
 
-      var response = await request.send();
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200) {
-        // Leemos la respuesta del servidor
-        final respStr = await response.stream.bytesToString();
-        final jsonResponse = json.decode(respStr);
-
+        var data = json.decode(response.body);
         setState(() {
-          // Guardamos los datos que llegaron dentro de "datos"
-          _datosFactura = jsonResponse['datos'];
+          _resultado = data['datos']; // Accedemos al objeto 'datos' del JSON
+          _isLoading = false;
         });
       } else {
-        print("Error en el servidor: ${response.statusCode}");
+        _mostrarError("Error del servidor: ${response.statusCode}");
       }
     } catch (e) {
-      print("Error de conexión: $e");
-    } finally {
-      setState(() {
-        _isLoading = false; // Termina de cargar
-      });
+      _mostrarError("Error de conexión: $e");
     }
+  }
+
+  void _mostrarError(String mensaje) {
+    setState(() {
+      _isLoading = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(mensaje), backgroundColor: Colors.red),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Escaner Contable SUNAT')),
-      body: SingleChildScrollView( // Permite hacer scroll si la factura es larga
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            children: <Widget>[
-              // --- AREA DE LA IMAGEN ---
+      appBar: AppBar(
+        title: const Text("Escáner Contable SIRE"),
+        centerTitle: true,
+        backgroundColor: Colors.blue[800],
+        foregroundColor: Colors.white,
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              "Selecciona el tipo de operación:",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+
+            // --- BOTONES DE ACCIÓN ---
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _procesarImagen(esVenta: false),
+                    icon: const Icon(Icons.shopping_cart, size: 30),
+                    label: const Text("REGISTRAR\nCOMPRA"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange[100],
+                      foregroundColor: Colors.orange[900],
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 15),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _procesarImagen(esVenta: true),
+                    icon: const Icon(Icons.attach_money, size: 30),
+                    label: const Text("REGISTRAR\nVENTA"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green[100],
+                      foregroundColor: Colors.green[900],
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 30),
+
+            // --- VISTA PREVIA DE IMAGEN ---
+            if (_image != null)
               Container(
-                height: 300,
-                width: double.infinity,
+                height: 250,
                 decoration: BoxDecoration(
                   border: Border.all(color: Colors.grey),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: _image == null
-                    ? Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.camera_alt, size: 50, color: Colors.grey),
-                          Text("Toca el botón para escanear"),
-                        ],
-                      )
-                    : Image.file(_image!, fit: BoxFit.contain),
-              ),
-              
-              SizedBox(height: 20),
-
-              // --- BOTONES ---
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  ElevatedButton.icon(
-                    onPressed: getImage,
-                    icon: Icon(Icons.camera),
-                    label: Text("Capturar"),
-                  ),
-                  ElevatedButton.icon(
-                    onPressed: _isLoading ? null : uploadImage, // Se desactiva si carga
-                    icon: Icon(Icons.cloud_upload),
-                    label: Text("Procesar con IA"),
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
-                  ),
-                ],
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.file(_image!, fit: BoxFit.cover),
+                ),
               ),
 
-              SizedBox(height: 30),
+            const SizedBox(height: 20),
 
-              // --- RESULTADOS O CARGANDO ---
-              if (_isLoading)
-                Column(
+            // --- INDICADOR DE CARGA ---
+            if (_isLoading)
+              const Center(
+                child: Column(
                   children: [
                     CircularProgressIndicator(),
                     SizedBox(height: 10),
-                    Text("La IA está leyendo la factura..."),
+                    Text("Gemini analizando documento..."),
                   ],
                 ),
+              ),
 
-              if (_datosFactura != null)
-                Card(
-                  elevation: 5,
-                  child: Padding(
-                    padding: const EdgeInsets.all(15.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text("Datos Extraídos (SUNAT):", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                        Divider(),
-                        _filaDato("RUC:", _datosFactura!['ruc_emisor'] ?? "No encontrado"),
-                        _filaDato("Fecha:", _datosFactura!['fecha_emision'] ?? "No encontrado"),
-                        _filaDato("Total:", "S/ ${_datosFactura!['total']}"),
-                        _filaDato("IGV:", "S/ ${_datosFactura!['igv']}"),
-                      ],
-                    ),
-                  ),
-                )
-            ],
-          ),
+            // --- RESULTADOS ---
+            if (_resultado != null) _buildResultCard(),
+          ],
         ),
       ),
     );
   }
 
-  // Widget auxiliar para mostrar los datos ordenados
-  Widget _filaDato(String titulo, String valor) {
+  // Widget para mostrar los datos dependiendo si es Compra o Venta
+  Widget _buildResultCard() {
+    return Card(
+      elevation: 4,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  _tipoOperacion == 'venta' ? "VENTA MANUAL" : "GASTO / COMPRA",
+                  style: TextStyle(
+                    color: _tipoOperacion == 'venta' ? Colors.green : Colors.orange,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                const Icon(Icons.check_circle, color: Colors.green),
+              ],
+            ),
+            const Divider(),
+            
+            // Campos comunes
+            _infoRow("Fecha:", _resultado?['fecha_emision']),
+            _infoRow("Tipo:", _resultado?['tipo_comprobante'] == '01' ? 'Factura' : 'Boleta'),
+            _infoRow("Doc:", "${_resultado?['serie']} - ${_resultado?['numero']}"),
+
+            const Divider(),
+            
+            // Campos Específicos
+            if (_tipoOperacion == 'compra') ...[
+              const Text("DATOS PROVEEDOR:", style: TextStyle(fontWeight: FontWeight.bold)),
+              _infoRow("RUC:", _resultado?['proveedor_ruc']),
+              _infoRow("Razón Social:", _resultado?['proveedor_razon_social']),
+              _infoRow("Clasificación:", _resultado?['clasificacion_bien_servicio']),
+            ] else ...[
+              const Text("DATOS CLIENTE:", style: TextStyle(fontWeight: FontWeight.bold)),
+              _infoRow("Tipo Doc:", _resultado?['cliente_tipo_doc'] == '1' ? 'DNI' : 'RUC'),
+              _infoRow("Número:", _resultado?['cliente_nro_doc']),
+              _infoRow("Nombre:", _resultado?['cliente_razon_social']),
+            ],
+
+            const Divider(),
+            
+            // Totales
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text("TOTAL:", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text(
+                    "S/ ${_resultado?['monto_total']}",
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.blue),
+                  ),
+                ],
+              ),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _infoRow(String label, dynamic value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(titulo, style: TextStyle(fontWeight: FontWeight.bold)),
-          Text(valor, style: TextStyle(fontSize: 16)),
+          SizedBox(
+            width: 100, 
+            child: Text(label, style: const TextStyle(fontWeight: FontWeight.w500, color: Colors.grey)),
+          ),
+          Expanded(
+            child: Text(
+              value?.toString() ?? "---",
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
         ],
       ),
     );
