@@ -42,8 +42,22 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
+  // Función para navegar cuando tocas el menú de abajo
+  void _onNavTap(int index) {
+    if (index == 1) { // El índice 1 es el icono de "Libros"
+      Navigator.push(
+        context, 
+        MaterialPageRoute(
+          // Le pasamos la IP que ya tienes definida arriba en esta misma clase
+          builder: (context) => RecordsScreen(ipAddress: ipAddress) 
+        ) 
+      );
+    } else {
+      setState(() => _selectedIndex = index);
+    }
+  }
   // ⚠️⚠️⚠️ CAMBIA ESTO POR TU IP (ipconfig) ⚠️⚠️⚠️
-  final String ipAddress = "192.168.X.X"; 
+  final String ipAddress = "192.168.31.102"; 
   
   bool _isLoading = false;
   final ImagePicker _picker = ImagePicker();
@@ -396,14 +410,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
       shape: const CircularNotchedRectangle(),
       notchMargin: 8.0,
       color: QontaColors.primaryBlue,
+      padding: const EdgeInsets.symmetric(horizontal: 10), // Un poco de margen
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          const Icon(Icons.home, color: QontaColors.accentYellow, size: 28),
-          const Icon(Icons.menu_book, color: Colors.white, size: 28),
-          const SizedBox(width: 40), 
-          const Icon(Icons.groups, color: Colors.white, size: 28),
-          const Icon(Icons.bar_chart, color: Colors.white, size: 28),
+          // Botón 0: Inicio
+          IconButton(
+            icon: Icon(Icons.home, color: _selectedIndex == 0 ? QontaColors.accentYellow : Colors.white, size: 28),
+            onPressed: () => _onNavTap(0),
+          ),
+          
+          // Botón 1: Libros (ESTE ES EL QUE ABRE LA NUEVA PANTALLA)
+          IconButton(
+            icon: Icon(Icons.menu_book, color: _selectedIndex == 1 ? QontaColors.accentYellow : Colors.white, size: 28),
+            onPressed: () => _onNavTap(1), 
+          ),
+          
+          const SizedBox(width: 40), // Espacio para el botón de escanear
+          
+          // Botón 2: Planilla (Sin función aún)
+          IconButton(
+            icon: const Icon(Icons.groups, color: Colors.white, size: 28),
+            onPressed: () => _onNavTap(2),
+          ),
+          
+          // Botón 3: Informes (Sin función aún)
+          IconButton(
+            icon: const Icon(Icons.bar_chart, color: Colors.white, size: 28),
+            onPressed: () => _onNavTap(3),
+          ),
         ],
       ),
     );
@@ -436,6 +471,184 @@ class _TransactionItem extends StatelessWidget {
           Text(amount, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         ],
       ),
+    );
+  }
+}
+// --- PANTALLA DE MIS REGISTROS ---
+class RecordsScreen extends StatefulWidget {
+  final String ipAddress;
+  const RecordsScreen({super.key, required this.ipAddress});
+
+  @override
+  State<RecordsScreen> createState() => _RecordsScreenState();
+}
+
+class _RecordsScreenState extends State<RecordsScreen> {
+  String _filtroTipo = "compras"; // 'compras' o 'ventas'
+  List<dynamic> _registros = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargarRegistros();
+  }
+
+  Future<void> _cargarRegistros() async {
+    setState(() => _loading = true);
+    try {
+      var uri = Uri.parse("http://${widget.ipAddress}:8000/obtener-registros/$_filtroTipo");
+      var response = await http.get(uri);
+      if (response.statusCode == 200) {
+        var data = json.decode(response.body);
+        setState(() {
+          _registros = data['datos'];
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      setState(() => _loading = false);
+      print("Error cargando registros: $e");
+    }
+  }
+
+  // Función para Editar (Simulada visualmente)
+  void _mostrarDialogoEditar(Map<String, dynamic> item) {
+    TextEditingController montoCtrl = TextEditingController(text: item['monto'].toString());
+    TextEditingController fechaCtrl = TextEditingController(text: item['fecha']);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Editar Registro"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: fechaCtrl, decoration: const InputDecoration(labelText: "Fecha (DD/MM/YYYY)")),
+            TextField(controller: montoCtrl, decoration: const InputDecoration(labelText: "Monto Total"), keyboardType: TextInputType.number),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar")),
+          ElevatedButton(
+            onPressed: () async {
+              // Llamada al Backend para guardar
+              await _guardarEdicion(item['id'], double.parse(montoCtrl.text), fechaCtrl.text);
+              Navigator.pop(context);
+              _cargarRegistros(); // Recargar lista
+            },
+            child: const Text("Guardar"),
+          )
+        ],
+      ),
+    );
+  }
+
+  Future<void> _guardarEdicion(int id, double monto, String fecha) async {
+    try {
+      var uri = Uri.parse("http://${widget.ipAddress}:8000/editar-registro/");
+      await http.put(uri, 
+        headers: {"Content-Type": "application/json"},
+        body: json.encode({
+          "id": id,
+          "tipo": _filtroTipo,
+          "nuevo_monto": monto,
+          "nueva_fecha": fecha
+        })
+      );
+    } catch (e) {
+      print("Error guardando: $e");
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Mis Registros", style: TextStyle(color: Colors.white)),
+        backgroundColor: QontaColors.primaryBlue,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
+      body: Column(
+        children: [
+          // FILTROS SUPERIORES
+          Padding(
+            padding: const EdgeInsets.all(15.0),
+            child: Row(
+              children: [
+                _buildFilterChip("Gastos / Compras", "compras", Colors.orange),
+                const SizedBox(width: 10),
+                _buildFilterChip("Ventas / Ingresos", "ventas", Colors.blue),
+              ],
+            ),
+          ),
+          
+          // LISTA DE REGISTROS
+          Expanded(
+            child: _loading 
+              ? const Center(child: CircularProgressIndicator())
+              : _registros.isEmpty 
+                ? const Center(child: Text("No hay registros aún"))
+                : ListView.builder(
+                    padding: const EdgeInsets.all(10),
+                    itemCount: _registros.length,
+                    itemBuilder: (context, index) {
+                      final item = _registros[index];
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                        child: ListTile(
+                          leading: item['foto'] != null
+                              ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  // MOSTRAR FOTO DEL SERVIDOR PYTHON
+                                  child: Image.network(
+                                    "http://${widget.ipAddress}:8000/${item['foto']}",
+                                    width: 50, height: 50, fit: BoxFit.cover,
+                                    errorBuilder: (c,o,s) => const Icon(Icons.receipt),
+                                  ),
+                                )
+                              : Container(
+                                  width: 50, height: 50, 
+                                  color: Colors.grey[200], 
+                                  child: const Icon(Icons.receipt)
+                                ),
+                          title: Text(item['titulo'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: Text("${item['fecha']} • ${item['categoria']}"),
+                          trailing: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text("S/ ${item['monto']}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                              const Icon(Icons.edit, size: 16, color: Colors.grey)
+                            ],
+                          ),
+                          onTap: () => _mostrarDialogoEditar(item),
+                        ),
+                      );
+                    },
+                  ),
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterChip(String label, String valor, Color color) {
+    bool selected = _filtroTipo == valor;
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      selectedColor: color.withOpacity(0.2),
+      labelStyle: TextStyle(color: selected ? color : Colors.grey),
+      onSelected: (bool val) {
+        if (val) {
+          setState(() {
+            _filtroTipo = valor;
+            _cargarRegistros();
+          });
+        }
+      },
     );
   }
 }
