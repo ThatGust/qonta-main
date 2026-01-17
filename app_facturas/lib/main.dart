@@ -57,7 +57,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
   // ⚠️⚠️⚠️ CAMBIA ESTO POR TU IP (ipconfig) ⚠️⚠️⚠️
-  final String ipAddress = "192.168.31.102"; 
+  final String ipAddress = "192.168.0.2"; 
   
   bool _isLoading = false;
   final ImagePicker _picker = ImagePicker();
@@ -156,9 +156,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   // --- DIALOGO DE RESULTADO (TICKET) ---
+// --- DIALOGO DE RESULTADO ACTUALIZADO ---
   void _mostrarResultadoDialog(Map<String, dynamic> datos, bool esVenta) {
     showDialog(
       context: context,
+      barrierDismissible: false, // Forzar a que interactúe con el ticket
       builder: (context) {
         return AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -178,7 +180,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const Icon(Icons.check_circle, color: Colors.white, size: 40),
                     const SizedBox(height: 5),
                     Text(
-                      esVenta ? "VENTA REGISTRADA" : "GASTO REGISTRADO",
+                      esVenta ? "VENTA DETECTADA" : "GASTO DETECTADO",
                       style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                     )
                   ],
@@ -192,16 +194,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     _infoRow("RUC/Doc", esVenta ? datos['cliente_nro_doc'] : datos['proveedor_ruc']),
                     _infoRow("Nombre", esVenta ? datos['cliente_razon_social'] : datos['proveedor_razon_social']),
                     const Divider(),
-                    const Text("TOTAL", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    const Text("TOTAL DETECTADO", style: TextStyle(color: Colors.grey, fontSize: 12)),
                     Text("S/ ${datos['monto_total']}", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                   ],
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.only(bottom: 15),
-                child: TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text("Cerrar"),
+                padding: const EdgeInsets.only(bottom: 15, right: 15),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    // --- BOTÓN EDITAR EN AMARILLO Y NEGRITA ---
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pop(context); // Cierra el ticket
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => EditarDatosScreen(datos: datos, esVenta: esVenta, ipAddress: ipAddress),
+                          ),
+                        );
+                      },
+                      child: const Text(
+                        "EDITAR",
+                        style: TextStyle(color: QontaColors.accentYellow, fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text("Cerrar", style: TextStyle(color: Colors.grey)),
+                    ),
+                  ],
                 ),
               )
             ],
@@ -484,6 +508,7 @@ class RecordsScreen extends StatefulWidget {
 }
 
 class _RecordsScreenState extends State<RecordsScreen> {
+
   String _filtroTipo = "compras"; // 'compras' o 'ventas'
   List<dynamic> _registros = [];
   bool _loading = true;
@@ -649,6 +674,188 @@ class _RecordsScreenState extends State<RecordsScreen> {
           });
         }
       },
+    );
+  }
+}
+
+class EditarDatosScreen extends StatefulWidget {
+  final Map<String, dynamic> datos;
+  final bool esVenta;
+  final String ipAddress;
+
+  const EditarDatosScreen({super.key, required this.datos, required this.esVenta, required this.ipAddress});
+
+  @override
+  State<EditarDatosScreen> createState() => _EditarDatosScreenState();
+}
+
+class _EditarDatosScreenState extends State<EditarDatosScreen> {
+  bool _isSaving = false; 
+
+  late TextEditingController _rucController;
+  late TextEditingController _nombreController;
+  late TextEditingController _montoController;
+  late TextEditingController _fechaController;
+  late TextEditingController _docController;
+
+  @override
+  void initState() {
+    super.initState();
+    _rucController = TextEditingController(text: widget.esVenta 
+        ? (widget.datos['cliente_nro_doc']?.toString() ?? "") 
+        : (widget.datos['proveedor_ruc']?.toString() ?? ""));
+    _nombreController = TextEditingController(text: widget.esVenta 
+        ? (widget.datos['cliente_razon_social'] ?? "") 
+        : (widget.datos['proveedor_razon_social'] ?? ""));
+    _montoController = TextEditingController(text: widget.datos['monto_total']?.toString() ?? "0.0");
+    _fechaController = TextEditingController(text: widget.datos['fecha_emision'] ?? "");
+    _docController = TextEditingController(text: widget.datos['serie_numero'] ?? "");
+  }
+
+  @override
+  void dispose() {
+    _rucController.dispose();
+    _nombreController.dispose();
+    _montoController.dispose();
+    _fechaController.dispose();
+    _docController.dispose();
+    super.dispose();
+  }
+
+  // --- LÓGICA DE GUARDADO ACTUALIZADA ---
+  Future<void> _confirmarYGuardar() async {
+    if (_isSaving) return;
+
+    setState(() => _isSaving = true);
+    
+    // Mapeo exacto para tus tablas compras_sire y ventas_sire de contabilidad.db
+    Map<String, dynamic> body = {
+      "tipo": widget.esVenta ? "venta" : "compra",
+      "datos": {
+        "fecha_emision": _fechaController.text,
+        "monto_total": double.tryParse(_montoController.text) ?? 0.0,
+        "serie": _docController.text,
+        if (widget.esVenta) "cliente_nro_doc": _rucController.text else "proveedor_ruc": _rucController.text,
+        if (widget.esVenta) "cliente_razon_social": _nombreController.text else "proveedor_razon_social": _nombreController.text,
+      }
+    };
+
+    try {
+      var response = await http.post(
+        Uri.parse("http://${widget.ipAddress}:8000/guardar-confirmado/"),
+        headers: {"Content-Type": "application/json"},
+        body: json.encode(body),
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        if (!mounted) return;
+        Navigator.pop(context); // Regresa al Dashboard
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("¡Datos guardados con éxito!"), backgroundColor: Colors.green),
+        );
+      } else {
+        throw Exception("Error del servidor: ${response.statusCode}");
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error al guardar: $e"), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: QontaColors.primaryBlue,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text("Editar Registro", style: TextStyle(color: Colors.white)),
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 10),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Expanded(
+                  child: Text("Verifica los datos", 
+                    style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                ),
+                ElevatedButton(
+                  onPressed: _isSaving ? null : _confirmarYGuardar,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: QontaColors.accentYellow,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  ),
+                  child: _isSaving 
+                    ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : const Text("Confirmar", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                )
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
+              ),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(30),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("Detalles del Documento", 
+                      style: const TextStyle(color: QontaColors.cardBlue, fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 20),
+                    _buildEditField("RUC / Doc:", _rucController),
+                    _buildEditField("Razón social / Nombre:", _nombreController),
+                    _buildEditField("Monto Total (S/):", _montoController, isNumber: true),
+                    _buildEditField("Fecha (DD/MM/YYYY):", _fechaController),
+                    _buildEditField("Serie / Número:", _docController),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEditField(String label, TextEditingController controller, {bool isNumber = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(color: QontaColors.cardBlue, fontWeight: FontWeight.w500)),
+          const SizedBox(height: 8),
+          TextField(
+            controller: controller,
+            keyboardType: isNumber ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
+            decoration: InputDecoration(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+              enabledBorder: OutlineInputBorder(
+                borderSide: const BorderSide(color: QontaColors.accentYellow),
+                borderRadius: BorderRadius.circular(25),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderSide: const BorderSide(color: QontaColors.cardBlue, width: 2),
+                borderRadius: BorderRadius.circular(25),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
