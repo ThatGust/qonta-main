@@ -14,24 +14,21 @@ import uvicorn
 from google import genai
 from google.genai import types
 
-# --- TU API KEY ---
+# PORPIA API KEY 
 GOOGLE_API_KEY = "AIzaSyA4GsKVGCT8DsSNK2LNQEbr1utpD-GRr3w"
 
 client = genai.Client(api_key=GOOGLE_API_KEY)
 app = FastAPI()
 
-# 1. Crear carpeta para guardar imagenes si no existe
 os.makedirs("uploads", exist_ok=True)
 
-# 2. Servir archivos estáticos
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
-# --- CONFIGURACIÓN DE BASE DE DATOS (NUEVA ESTRUCTURA SIRE DETALLADA) ---
+# CONFIGURACIÓN DE BASE DE DATOS (NUEVA ESTRUCTURA SIRE DETALLADA)
 def iniciar_base_datos():
     conn = sqlite3.connect("contabilidad.db")
     cursor = conn.cursor()
     
-    # Tabla COMPRAS (Se mantiene igual, para tus gastos)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS compras_sire (
             id_gasto INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -52,7 +49,6 @@ def iniciar_base_datos():
     ''')
 
     # Tabla VENTAS (REEMPLAZADA con la estructura del reporte SIRE)
-    # Nota: Si ya existe la tabla con estructura vieja, idealmente borra el archivo .db para recrearlo limpio
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS ventas_sire (
             id_transaccion INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -108,9 +104,9 @@ def guardar_imagen_disco(uploaded_file: UploadFile):
     uploaded_file.file.seek(0)
     return ruta_relativa
 
-# ==========================================
-# 🛒 ENDPOINT 1: ESCANEAR COMPRAS (GASTOS)
-# ==========================================
+
+#  ENDPOINT 1: ESCANEAR COMPRAS (GASTOS)
+    
 @app.post("/escanear-compra/")
 async def escanear_compra(file: UploadFile = File(...)):
     print(f"📷 Procesando COMPRA: {file.filename}...")
@@ -174,9 +170,9 @@ async def escanear_compra(file: UploadFile = File(...)):
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
-# ==========================================
-# 💰 ENDPOINT 2: ESCANEAR VENTA (ESTRUCTURA SIRE COMPLETA)
-# ==========================================
+
+# ENDPOINT 2: ESCANEAR VENTA (ESTRUCTURA SIRE COMPLETA)
+
 @app.post("/escanear-venta/")
 async def escanear_venta(file: UploadFile = File(...)):
     print(f"📷 Procesando VENTA: {file.filename}...")
@@ -274,10 +270,9 @@ async def escanear_venta(file: UploadFile = File(...)):
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
-# ==========================================
-# 💻 ENDPOINT 3: REGISTRAR VENTA (SISTEMA - MANUAL)
-# ==========================================
-# Modelo actualizado para recibir la edición completa desde la App
+
+# ENDPOINT 3: REGISTRAR VENTA (SISTEMA - MANUAL)
+
 class VentaSistema(BaseModel):
     fecha_emision: str
     tipo_comprobante: str
@@ -337,14 +332,13 @@ async def registrar_venta_sistema(venta: VentaSistema):
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
     
-# --- AÑADE ESTOS ENDPOINTS AL FINAL DE TU main.py ---
 
 @app.get("/obtener-registros/{tipo}")
 async def obtener_registros(tipo: str):
     print(f"📋 Consultando registros de: {tipo}")
     try:
         conn = sqlite3.connect("contabilidad.db")
-        conn.row_factory = sqlite3.Row # Permite acceder por nombre de columna
+        conn.row_factory = sqlite3.Row 
         cursor = conn.cursor()
         
         registros = []
@@ -370,7 +364,7 @@ async def obtener_registros(tipo: str):
                     "fecha": r["fecha_emision"],
                     "monto": r["total_cp"],
                     "categoria": r["tipo_comprobante"],
-                    "foto": None # Las ventas no suelen llevar foto en tu estructura
+                    "foto": None 
                 })
         
         conn.close()
@@ -379,7 +373,7 @@ async def obtener_registros(tipo: str):
         print(f"❌ Error al obtener registros: {e}")
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-# Endpoint para guardar lo confirmado desde la pantalla amarilla de Flutter
+# Endpoint para guardar lo confirmado 
 @app.post("/guardar-confirmado/")
 async def guardar_confirmado(payload: dict):
     try:
@@ -415,5 +409,4 @@ async def guardar_confirmado(payload: dict):
 
 if __name__ == "__main__":
     print("🚀 Servidor SIRE Completo Actualizado...")
-    # Asegurate de que la IP sea la de tu máquina
     uvicorn.run(app, host="192.168.0.2", port=8000)
