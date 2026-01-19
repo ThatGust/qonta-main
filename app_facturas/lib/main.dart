@@ -10,8 +10,8 @@ void main() {
 
 class QontaColors {
   static const Color primaryBlue = Color(0xFF0D47A1); // Azul oscuro
-  static const Color cardBlue = Color(0xFF1565C0);    // Azul botones
-  static const Color accentYellow = Color(0xFFFFA000); // Mostaza/Amarillo
+  static const Color cardBlue = Color(0xFF1565C0);    // Azul 
+  static const Color accentYellow = Color(0xFFFFA000); // Mostaza semi-amarillo
   static const Color backgroundBlue = Color(0xFF0D47A1); 
 }
 
