@@ -149,7 +149,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _mostrarResultadoDialog(Map<String, dynamic> datos, bool esVenta) {
     showDialog(
       context: context,
-      barrierDismissible: false, // Forzar a que interactue con el ticket
+      barrierDismissible: false, // Esto fuerza a que interactue con el ticket (error corregido)
       builder: (context) {
         return AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -240,7 +240,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: QontaColors.backgroundBlue,
-      // --- BOTÓN FLOTANTE CON FUNCIONALIDAD ---
       floatingActionButton: Container(
         height: 70, width: 70,
         decoration: BoxDecoration(
@@ -483,7 +482,7 @@ class _TransactionItem extends StatelessWidget {
     );
   }
 }
-// PANTALLA DE MIS REGISTROS 
+// PANTALLA DE "MIS REGISTROS "
 class RecordsScreen extends StatefulWidget {
   final String ipAddress;
   const RecordsScreen({super.key, required this.ipAddress});
