@@ -1,8 +1,8 @@
-# 🧾 Escáner Contable con IA (SUNAT Perú)
+#  Escáner Contable con IA (SUNAT Perú)
 
 Este proyecto es una aplicación móvil que permite escanear facturas y boletas físicas peruanas usando la cámara del celular. Utiliza Inteligencia Artificial (**Google Gemini**) para extraer automáticamente datos clave (RUC, Fecha, Total, IGV) y los guarda en un Libro Contable digital (Excel/CSV).
 
-## 🚀 Tecnologías
+## Tecnologías
 
 * **Frontend:** Flutter (Dart) - Aplicación Móvil Android.
 * **Backend:** Python (FastAPI + Uvicorn).
@@ -11,7 +11,7 @@ Este proyecto es una aplicación móvil que permite escanear facturas y boletas 
 
 ---
 
-## 🛠️ Requisitos Previos
+##  Requisitos Previos
 
 Asegúrate de tener instalado en tu PC:
 1.  **Git** (Para descargar el código).
@@ -21,7 +21,7 @@ Asegúrate de tener instalado en tu PC:
 
 ---
 
-## ⚙️ Instalación y Configuración
+##  Instalación y Configuración
 
 Sigue estos pasos en orden para poner todo a funcionar en una nueva PC.
 
@@ -96,7 +96,7 @@ Bash
 
 flutter run
 ```
-📝 Cómo usar
+Cómo usar
 #Verifica que el Servidor Python esté corriendo (terminal abierta).
 
 #En la App, presiona "Cámara" y toma la foto del recibo.
