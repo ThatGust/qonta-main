@@ -64,7 +64,7 @@ py -m pip install fastapi uvicorn google-genai pandas pillow python-multipart
 
 py main.py
 ```
-Debe decir: 🚀 Servidor con Gemini Flash Latest listo...
+Debe decir: Servidor con Gemini Flash Latest listo...
 
 3. Configurar el Frontend (App Móvil)
 Abre una nueva terminal (sin cerrar la del servidor) y entra a la carpeta de la app:
