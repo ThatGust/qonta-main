@@ -8,7 +8,6 @@ void main() {
   runApp(const QontaApp());
 }
 
-// --- COLORES DE LA MARCA ---
 class QontaColors {
   static const Color primaryBlue = Color(0xFF0D47A1); // Azul oscuro
   static const Color cardBlue = Color(0xFF1565C0);    // Azul botones
@@ -42,13 +41,11 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  // Función para navegar cuando tocas el menú de abajo
   void _onNavTap(int index) {
-    if (index == 1) { // El índice 1 es el icono de "Libros"
+    if (index == 1) { 
       Navigator.push(
         context, 
         MaterialPageRoute(
-          // Le pasamos la IP que ya tienes definida arriba en esta misma clase
           builder: (context) => RecordsScreen(ipAddress: ipAddress) 
         ) 
       );
@@ -56,25 +53,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
       setState(() => _selectedIndex = index);
     }
   }
-  // ⚠️⚠️⚠️ CAMBIA ESTO POR TU IP (ipconfig) ⚠️⚠️⚠️
   final String ipAddress = "192.168.0.2"; 
   
   bool _isLoading = false;
   final ImagePicker _picker = ImagePicker();
   int _selectedIndex = 0;
 
-  // --- LÓGICA DEL BACKEND (Cámara -> Python) ---
   Future<void> _procesarOperacion(bool esVenta) async {
-    // 1. Cerrar el menú de selección si está abierto
+
     Navigator.of(context).pop(); 
 
-    // 2. Abrir Cámara
     final XFile? photo = await _picker.pickImage(source: ImageSource.camera);
     if (photo == null) return;
 
     setState(() => _isLoading = true);
 
-    // 3. Preparar Envío
     String endpoint = esVenta ? "escanear-venta" : "escanear-compra";
     var uri = Uri.parse("http://$ipAddress:8000/$endpoint/");
 
@@ -87,7 +80,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       if (response.statusCode == 200) {
         var data = json.decode(response.body);
-        // 4. Mostrar Resultado en una ventana flotante
         _mostrarResultadoDialog(data['datos'], esVenta);
       } else {
         _mostrarSnackBar("Error del servidor: ${response.statusCode}", Colors.red);
@@ -105,7 +97,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // --- MENÚ PARA ELEGIR TIPO DE ESCANEO ---
   void _mostrarMenuEscaneo() {
     showModalBottomSheet(
       context: context,
@@ -123,7 +114,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 children: [
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: () => _procesarOperacion(false), // Es Compra/Gasto
+                      onPressed: () => _procesarOperacion(false), // Compra/Gasto
                       icon: const Icon(Icons.receipt_long),
                       label: const Text("GASTO"),
                       style: ElevatedButton.styleFrom(
@@ -136,7 +127,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   const SizedBox(width: 15),
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: () => _procesarOperacion(true), // Es Venta
+                      onPressed: () => _procesarOperacion(true), // Ventaa
                       icon: const Icon(Icons.attach_money),
                       label: const Text("VENTA"),
                       style: ElevatedButton.styleFrom(
@@ -155,12 +146,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // --- DIALOGO DE RESULTADO (TICKET) ---
-// --- DIALOGO DE RESULTADO ACTUALIZADO ---
   void _mostrarResultadoDialog(Map<String, dynamic> datos, bool esVenta) {
     showDialog(
       context: context,
-      barrierDismissible: false, // Forzar a que interactúe con el ticket
+      barrierDismissible: false, // Forzar a que interactue con el ticket
       builder: (context) {
         return AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -204,7 +193,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    // --- BOTÓN EDITAR EN AMARILLO Y NEGRITA ---
                     TextButton(
                       onPressed: () {
                         Navigator.pop(context); // Cierra el ticket
@@ -260,7 +248,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           border: Border.all(color: Colors.white, width: 4),
         ),
         child: FloatingActionButton(
-          onPressed: _isLoading ? null : _mostrarMenuEscaneo, // <--- AQUI ESTÁ LA MAGIA
+          onPressed: _isLoading ? null : _mostrarMenuEscaneo,
           backgroundColor: QontaColors.cardBlue,
           elevation: 0,
           shape: const CircleBorder(),
@@ -327,14 +315,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // --- WIDGETS DE UI (Corregidos sin imagenes externas) ---
+  // WIDGETS DE UI 
   Widget _buildHeader() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // LOGO (Este si debe existir en assets/logo.png)
           SizedBox(
             height: 160,
             child: Image.asset('assets/logo.png', fit: BoxFit.contain, 
@@ -360,7 +347,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ],
               ),
               const SizedBox(width: 10),
-              // AVATAR (Ahora es un Icono, no pide imagen)
               Container(
                 width: 50, height: 50,
                 decoration: BoxDecoration(
@@ -388,7 +374,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       child: Row(
         children: [
-          // LOGO EMPRESA (Ahora es un Icono)
           Container(
             width: 60, height: 60,
             decoration: BoxDecoration(
@@ -434,31 +419,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
       shape: const CircularNotchedRectangle(),
       notchMargin: 8.0,
       color: QontaColors.primaryBlue,
-      padding: const EdgeInsets.symmetric(horizontal: 10), // Un poco de margen
+      padding: const EdgeInsets.symmetric(horizontal: 10), // margen
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          // Botón 0: Inicio
+          // Botón de Inicio
           IconButton(
             icon: Icon(Icons.home, color: _selectedIndex == 0 ? QontaColors.accentYellow : Colors.white, size: 28),
             onPressed: () => _onNavTap(0),
           ),
           
-          // Botón 1: Libros (ESTE ES EL QUE ABRE LA NUEVA PANTALLA)
+          // Botón 1: Libros
           IconButton(
             icon: Icon(Icons.menu_book, color: _selectedIndex == 1 ? QontaColors.accentYellow : Colors.white, size: 28),
             onPressed: () => _onNavTap(1), 
           ),
           
-          const SizedBox(width: 40), // Espacio para el botón de escanear
+          const SizedBox(width: 40), 
           
-          // Botón 2: Planilla (Sin función aún)
+          // Botón 2: Planilla (aun no funciona)
           IconButton(
             icon: const Icon(Icons.groups, color: Colors.white, size: 28),
             onPressed: () => _onNavTap(2),
           ),
           
-          // Botón 3: Informes (Sin función aún)
+          // Botón 3: Informes (aun no funciona)
           IconButton(
             icon: const Icon(Icons.bar_chart, color: Colors.white, size: 28),
             onPressed: () => _onNavTap(3),
@@ -498,7 +483,7 @@ class _TransactionItem extends StatelessWidget {
     );
   }
 }
-// --- PANTALLA DE MIS REGISTROS ---
+// PANTALLA DE MIS REGISTROS 
 class RecordsScreen extends StatefulWidget {
   final String ipAddress;
   const RecordsScreen({super.key, required this.ipAddress});
@@ -537,7 +522,7 @@ class _RecordsScreenState extends State<RecordsScreen> {
     }
   }
 
-  // Función para Editar (Simulada visualmente)
+  // Función para Editar
   void _mostrarDialogoEditar(Map<String, dynamic> item) {
     TextEditingController montoCtrl = TextEditingController(text: item['monto'].toString());
     TextEditingController fechaCtrl = TextEditingController(text: item['fecha']);
@@ -557,10 +542,10 @@ class _RecordsScreenState extends State<RecordsScreen> {
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar")),
           ElevatedButton(
             onPressed: () async {
-              // Llamada al Backend para guardar
+
               await _guardarEdicion(item['id'], double.parse(montoCtrl.text), fechaCtrl.text);
               Navigator.pop(context);
-              _cargarRegistros(); // Recargar lista
+              _cargarRegistros(); // refresh de lista
             },
             child: const Text("Guardar"),
           )
@@ -596,7 +581,6 @@ class _RecordsScreenState extends State<RecordsScreen> {
       ),
       body: Column(
         children: [
-          // FILTROS SUPERIORES
           Padding(
             padding: const EdgeInsets.all(15.0),
             child: Row(
@@ -608,7 +592,6 @@ class _RecordsScreenState extends State<RecordsScreen> {
             ),
           ),
           
-          // LISTA DE REGISTROS
           Expanded(
             child: _loading 
               ? const Center(child: CircularProgressIndicator())
@@ -626,7 +609,6 @@ class _RecordsScreenState extends State<RecordsScreen> {
                           leading: item['foto'] != null
                               ? ClipRRect(
                                   borderRadius: BorderRadius.circular(8),
-                                  // MOSTRAR FOTO DEL SERVIDOR PYTHON
                                   child: Image.network(
                                     "http://${widget.ipAddress}:8000/${item['foto']}",
                                     width: 50, height: 50, fit: BoxFit.cover,
@@ -722,13 +704,11 @@ class _EditarDatosScreenState extends State<EditarDatosScreen> {
     super.dispose();
   }
 
-  // --- LÓGICA DE GUARDADO ACTUALIZADA ---
   Future<void> _confirmarYGuardar() async {
     if (_isSaving) return;
 
     setState(() => _isSaving = true);
     
-    // Mapeo exacto para tus tablas compras_sire y ventas_sire de contabilidad.db
     Map<String, dynamic> body = {
       "tipo": widget.esVenta ? "venta" : "compra",
       "datos": {
@@ -749,7 +729,7 @@ class _EditarDatosScreenState extends State<EditarDatosScreen> {
 
       if (response.statusCode == 200) {
         if (!mounted) return;
-        Navigator.pop(context); // Regresa al Dashboard
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("¡Datos guardados con éxito!"), backgroundColor: Colors.green),
         );
