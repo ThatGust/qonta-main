@@ -14,7 +14,6 @@ import uvicorn
 from google import genai
 from google.genai import types
 
-# TU API KEY (Mantenida del código anterior)
 GOOGLE_API_KEY = ""
 
 client = genai.Client(api_key=GOOGLE_API_KEY)
@@ -23,7 +22,6 @@ app = FastAPI()
 os.makedirs("uploads", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
-# CONFIGURACIÓN DE BASE DE DATOS
 def iniciar_base_datos():
     conn = sqlite3.connect("contabilidad.db")
     cursor = conn.cursor()
@@ -79,6 +77,26 @@ def iniciar_base_datos():
             estado_sire INTEGER DEFAULT 2
         )
     ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS usuarios (
+            id_usuario INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            nombre_completo TEXT,
+            plan TEXT DEFAULT 'Basic',
+            fecha_registro TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    cursor.execute("SELECT count(*) FROM usuarios")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute('''
+            INSERT INTO usuarios (email, password, nombre_completo, plan) 
+            VALUES (?, ?, ?, ?)
+        ''', ('oscar@qonta.com', '123456', 'Oscar', 'Basic'))
+        print("👤 Usuario default creado: oscar@qonta.com / 123456")
+        
     conn.commit()
     conn.close()
 
@@ -239,6 +257,10 @@ class VentaSistema(BaseModel):
     total_cp: float
     # ... otros campos simplificados para este ejemplo
 
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
 @app.post("/registrar-venta-sistema/")
 async def registrar_venta_sistema(venta: VentaSistema):
     # Simplificado por brevedad, usa la lógica similar a escanear-venta
@@ -334,6 +356,42 @@ async def guardar_confirmado(payload: dict):
         return {"mensaje": "OK"}
     except Exception as e:
         print(f"❌ Error al guardar confirmado: {e}")
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+    
+
+@app.post("/login/")
+async def login(usuario: LoginRequest):
+    print(f"🔑 Intentando login para: {usuario.email}")
+    try:
+        conn = sqlite3.connect("contabilidad.db")
+        conn.row_factory = sqlite3.Row # Esto es clave para acceder por nombre de columna
+        cursor = conn.cursor()
+        
+        # Buscamos al usuario por email y contraseña
+        # (Nota: En producción real, las contraseñas se encriptan, aquí usamos texto simple para prototipo)
+        cursor.execute("SELECT * FROM usuarios WHERE email = ? AND password = ?", (usuario.email, usuario.password))
+        user = cursor.fetchone()
+        
+        conn.close()
+        
+        if user:
+            print(f"✅ Bienvenido {user['nombre_completo']}")
+            return {
+                "status": "ok",
+                "usuario": {
+                    "id": user['id_usuario'],
+                    "nombre": user['nombre_completo'],
+                    "email": user['email'],
+                    "plan": user['plan']
+                }
+            }
+        else:
+            print("❌ Credenciales incorrectas")
+            # Devolvemos un error 401 (No autorizado) si falla
+            return JSONResponse(content={"error": "Email o contraseña incorrectos"}, status_code=401)
+            
+    except Exception as e:
+        print(f"❌ Error en login: {e}")
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 if __name__ == "__main__":
