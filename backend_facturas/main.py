@@ -17,7 +17,6 @@ import uvicorn
 from google import genai
 from google.genai import types
 
-# --- TU API KEY ---
 GOOGLE_API_KEY = ""
 
 client = genai.Client(api_key=GOOGLE_API_KEY)
@@ -29,12 +28,10 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 os.makedirs("static/avatars", exist_ok=True) # Asegura que la carpeta exista
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# --- CONFIGURACIÓN DE BASE DE DATOS (CON USER_ID) ---
 def iniciar_base_datos():
     conn = sqlite3.connect("contabilidad.db")
     cursor = conn.cursor()
     
-    # Tabla Usuarios
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS usuarios (
             id_usuario INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,7 +43,6 @@ def iniciar_base_datos():
         )
     ''')
 
-    # Tabla Compras (Ahora tiene user_id)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS compras_sire (
             id_gasto INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,7 +64,6 @@ def iniciar_base_datos():
         )
     ''')
 
-    # Tabla Ventas (Ahora tiene user_id)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS ventas_sire (
             id_transaccion INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -101,7 +96,17 @@ def iniciar_base_datos():
         )
     ''')
 
-    # Crear usuario default por si acaso
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS detalle_items (
+            id_item INTEGER PRIMARY KEY AUTOINCREMENT,
+            tipo_registro TEXT, -- 'compra' o 'venta'
+            id_padre INTEGER,   -- ID de la compra o venta
+            descripcion TEXT,
+            cantidad REAL,
+            precio_unitario REAL,
+            total REAL
+        )
+    ''')
     cursor.execute("SELECT count(*) FROM usuarios")
     if cursor.fetchone()[0] == 0:
         cursor.execute('''
@@ -155,11 +160,52 @@ def guardar_imagen_disco(uploaded_file: UploadFile):
     uploaded_file.file.seek(0)
     return ruta_relativa
 
-# --- ENDPOINT REGISTRO ---
 class RegisterRequest(BaseModel):
     nombre: str
     email: str
     password: str
+
+def verificar_datos_empresa():
+    conn = sqlite3.connect("contabilidad.db")
+    cursor = conn.cursor()
+    cols = [
+        ("ruc_empresa", "TEXT"),
+        ("razon_social", "TEXT"),
+        ("direccion_fiscal", "TEXT"),
+        ("logo_empresa", "TEXT DEFAULT 'default_logo.png'")
+    ]
+    for col_name, col_type in cols:
+        try:
+            cursor.execute(f"SELECT {col_name} FROM usuarios LIMIT 1")
+        except sqlite3.OperationalError:
+            print(f"📦 Agregando columna '{col_name}'...")
+            cursor.execute(f"ALTER TABLE usuarios ADD COLUMN {col_name} {col_type}")
+    conn.commit()
+    conn.close()
+
+verificar_datos_empresa()
+
+def verificar_columnas_extra():
+    conn = sqlite3.connect("contabilidad.db")
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT direccion_proveedor FROM compras_sire LIMIT 1")
+    except sqlite3.OperationalError:
+        print("Agregando columnas extra a compras...")
+        cursor.execute("ALTER TABLE compras_sire ADD COLUMN direccion_proveedor TEXT")
+        cursor.execute("ALTER TABLE compras_sire ADD COLUMN telefono_proveedor TEXT")
+
+    try:
+        cursor.execute("SELECT direccion_cliente FROM ventas_sire LIMIT 1")
+    except sqlite3.OperationalError:
+        print("Agregando columnas extra a ventas...")
+        cursor.execute("ALTER TABLE ventas_sire ADD COLUMN direccion_cliente TEXT")
+        cursor.execute("ALTER TABLE ventas_sire ADD COLUMN telefono_cliente TEXT")
+
+    conn.commit()
+    conn.close()
+
+verificar_columnas_extra()
 
 @app.post("/register/")
 async def register(usuario: RegisterRequest):
@@ -177,7 +223,6 @@ async def register(usuario: RegisterRequest):
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-# --- LOGIN ---
 class LoginRequest(BaseModel):
     email: str
     password: str
@@ -208,7 +253,6 @@ async def login(usuario: LoginRequest):
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-# --- ESCANEAR COMPRA (Con user_id) ---
 @app.post("/escanear-compra/")
 async def escanear_compra(user_id: int = Form(...), file: UploadFile = File(...)):
     print(f"📷 Compra User {user_id}: {file.filename}")
@@ -216,34 +260,34 @@ async def escanear_compra(user_id: int = Form(...), file: UploadFile = File(...)
         ruta_imagen = guardar_imagen_disco(file)
         contents = await file.read()
         image = Image.open(io.BytesIO(contents))
-        
-        prompt = """Analiza COMPRA. Devuelve JSON: {"fecha_emision": "DD/MM/YYYY", "proveedor_ruc": "...", "proveedor_razon_social": "...", "tipo_comprobante": "01/03", "serie": "...", "numero": "...", "cod_destino_credito": "1/5", "base_imponible_1": 0.0, "igv_1": 0.0, "monto_total": 0.0, "clasificacion_bien_servicio": "..."}"""
-        
+
+        prompt = """Analiza esta FACTURA/BOLETA DE COMPRA. 
+        Extrae los datos, incluyendo dirección y teléfono si aparecen.
+        Devuelve JSON: {
+            "fecha_emision": "DD/MM/YYYY", 
+            "proveedor_ruc": "...", 
+            "proveedor_razon_social": "...",
+            "proveedor_direccion": "...",  
+            "proveedor_telefono": "...",
+            "tipo_comprobante": "Factura/Boleta", 
+            "serie": "...", 
+            "numero": "...", 
+            "monto_total": 0.0,
+            "items": [
+                {"descripcion": "Producto", "cantidad": 1, "precio_unitario": 0.0, "total": 0.0}
+            ]
+        }"""
+
         response = client.models.generate_content(
             model='gemini-flash-latest', contents=[prompt, image],
             config=types.GenerateContentConfig(response_mime_type='application/json')
         )
         datos = json.loads(response.text.strip())
-        
-        periodo = calcular_periodo(datos.get("fecha_emision", ""))
-        conn = sqlite3.connect("contabilidad.db")
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO compras_sire (
-                user_id, periodo_tributario, fecha_emision, proveedor_ruc, proveedor_razon_social,
-                tipo_comprobante, serie, numero, cod_destino_credito,
-                base_imponible_1, igv_1, monto_total, clasificacion_bien_servicio, ruta_imagen
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            user_id, periodo, datos.get("fecha_emision"), datos.get("proveedor_ruc"),
-            datos.get("proveedor_razon_social"), datos.get("tipo_comprobante"),
-            datos.get("serie"), datos.get("numero"), datos.get("cod_destino_credito"),
-            datos.get("base_imponible_1", 0.0), datos.get("igv_1", 0.0),
-            datos.get("monto_total", 0.0), datos.get("clasificacion_bien_servicio"), ruta_imagen
-        ))
-        conn.commit()
-        conn.close()
-        return JSONResponse(content={"mensaje": "Escaneo Exitoso", "ruta": ruta_imagen, "datos": datos})
+
+        datos['ruta_imagen'] = ruta_imagen
+
+
+        return JSONResponse(content={"mensaje": "Escaneo Exitoso", "datos": datos})
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
@@ -251,38 +295,41 @@ async def escanear_compra(user_id: int = Form(...), file: UploadFile = File(...)
 async def escanear_venta(user_id: int = Form(...), file: UploadFile = File(...)):
     print(f"📷 Venta User {user_id}: {file.filename}")
     try:
+        # AHORA SÍ GUARDAMOS LA IMAGEN EN VENTA TAMBIÉN
+        ruta_imagen = guardar_imagen_disco(file)
+
         contents = await file.read()
         image = Image.open(io.BytesIO(contents))
-        prompt = """Analiza VENTA. Devuelve JSON: {"fecha_emision": "DD/MM/YYYY", "tipo_comprobante": "01/03", "serie": "...", "numero": "...", "cliente_tipo_doc": "1/6", "cliente_nro_doc": "...", "cliente_razon_social": "...", "total_cp": 0.0, "moneda": "PEN"}"""
-        
+
+        prompt = """Analiza VENTA. Extrae datos del cliente.
+        Devuelve JSON: {
+            "fecha_emision": "DD/MM/YYYY", 
+            "tipo_comprobante": "Factura/Boleta", 
+            "serie": "...", 
+            "numero": "...", 
+            "cliente_nro_doc": "...", 
+            "cliente_razon_social": "...", 
+            "cliente_direccion": "...",
+            "cliente_telefono": "...",
+            "total_cp": 0.0, 
+            "moneda": "PEN",
+            "items": [
+                {"descripcion": "Producto", "cantidad": 1, "precio_unitario": 0.0, "total": 0.0}
+            ]
+        }"""
+
         response = client.models.generate_content(
             model='gemini-flash-latest', contents=[prompt, image],
             config=types.GenerateContentConfig(response_mime_type='application/json')
         )
         datos = json.loads(response.text.strip())
-        
-        periodo = calcular_periodo(datos.get("fecha_emision", ""))
-        conn = sqlite3.connect("contabilidad.db")
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO ventas_sire (
-                user_id, periodo_tributario, fecha_emision, tipo_comprobante, 
-                serie_comprobante, nro_comprobante, cliente_tipo_doc, cliente_nro_doc, cliente_razon_social,
-                total_cp, moneda
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            user_id, periodo, datos.get("fecha_emision"), datos.get("tipo_comprobante"),
-            datos.get("serie"), datos.get("numero"), datos.get("cliente_tipo_doc"), 
-            datos.get("cliente_nro_doc"), datos.get("cliente_razon_social"),
-            datos.get("total_cp", 0.0), datos.get("moneda", "PEN")
-        ))
-        conn.commit()
-        conn.close()
+        datos['ruta_imagen'] = ruta_imagen
+
+
         return JSONResponse(content={"mensaje": "Venta Escaneada", "datos": datos})
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-# --- OBTENER REGISTROS (Filtrado por user_id) ---
 @app.get("/obtener-registros/{tipo}")
 async def obtener_registros(tipo: str, user_id: int):
     try:
@@ -321,29 +368,57 @@ async def obtener_registros(tipo: str, user_id: int):
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-# --- GUARDAR CONFIRMADO (Con user_id) ---
 @app.post("/guardar-confirmado/")
 async def guardar_confirmado(payload: dict):
     try:
         tipo = payload.get("tipo")
         datos = payload.get("datos")
         user_id = payload.get("user_id")
-        
+        items = datos.get("items", [])
+
+        # Recuperamos la ruta de la imagen que pasamos desde el frontend
+        ruta_imagen = datos.get("ruta_imagen", "")
+
         periodo = calcular_periodo(datos.get("fecha_emision", ""))
         conn = sqlite3.connect("contabilidad.db")
         cursor = conn.cursor()
-        
+
+        id_generado = 0
+
         if tipo == "venta":
             cursor.execute('''
-                INSERT INTO ventas_sire (user_id, periodo_tributario, fecha_emision, cliente_nro_doc, cliente_razon_social, total_cp, serie_comprobante) 
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (user_id, periodo, datos['fecha_emision'], datos['cliente_nro_doc'], datos['cliente_razon_social'], datos['monto_total'], datos['serie']))
+                INSERT INTO ventas_sire (
+                    user_id, periodo_tributario, fecha_emision, 
+                    cliente_nro_doc, cliente_razon_social, direccion_cliente, telefono_cliente,
+                    total_cp, serie_comprobante, tipo_comprobante, ruta_imagen
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) -- Agregamos un placeholder más
+            ''', (
+                user_id, periodo, datos['fecha_emision'],
+                datos['cliente_nro_doc'], datos['cliente_razon_social'], datos.get('cliente_direccion'), datos.get('cliente_telefono'),
+                datos['monto_total'], datos['serie'], datos['tipo_comprobante'], ruta_imagen
+            ))
+            id_generado = cursor.lastrowid
         else:
             cursor.execute('''
-                INSERT INTO compras_sire (user_id, periodo_tributario, fecha_emision, proveedor_ruc, proveedor_razon_social, monto_total, serie) 
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (user_id, periodo, datos['fecha_emision'], datos['proveedor_ruc'], datos['proveedor_razon_social'], datos['monto_total'], datos['serie']))
-            
+                INSERT INTO compras_sire (
+                    user_id, periodo_tributario, fecha_emision, 
+                    proveedor_ruc, proveedor_razon_social, direccion_proveedor, telefono_proveedor,
+                    monto_total, serie, tipo_comprobante, ruta_imagen
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) -- Agregamos un placeholder más
+            ''', (
+                user_id, periodo, datos['fecha_emision'],
+                datos['proveedor_ruc'], datos['proveedor_razon_social'], datos.get('proveedor_direccion'), datos.get('proveedor_telefono'),
+                datos['monto_total'], datos['serie'], datos['tipo_comprobante'], ruta_imagen
+            ))
+            id_generado = cursor.lastrowid
+
+        # GUARDAR ITEMS
+        for item in items:
+            cursor.execute('''
+                INSERT INTO detalle_items (tipo_registro, id_padre, descripcion, cantidad, precio_unitario, total)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (tipo, id_generado, item.get('descripcion'), item.get('cantidad', 1), item.get('precio_unitario', 0), item.get('total', 0)))
+
         conn.commit()
         conn.close()
         return {"mensaje": "OK"}
@@ -354,6 +429,7 @@ class PerfilUpdate(BaseModel):
     user_id: int
     nombre_completo: str
     nickname: str
+
 
 @app.post("/editar-perfil/")
 async def editar_perfil(datos: PerfilUpdate):
@@ -373,6 +449,33 @@ async def editar_perfil(datos: PerfilUpdate):
         conn.commit()
         conn.close()
         return {"status": "ok", "mensaje": "Perfil actualizado correctamente"}
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.get("/usuario/{user_id}")
+async def obtener_usuario(user_id: int):
+    try:
+        conn = sqlite3.connect("contabilidad.db")
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT nombre_completo, nickname, email, plan, foto_perfil, ruc_empresa, razon_social, direccion_fiscal, logo_empresa FROM usuarios WHERE id_usuario = ?", (user_id,))
+        user = cursor.fetchone()
+        conn.close()
+
+        if user:
+            return {
+                "nombre": user['nombre_completo'],
+                "nickname": user['nickname'],
+                "email": user['email'],
+                "plan": user['plan'],
+                "foto_perfil": user['foto_perfil'],
+                "ruc": user['ruc_empresa'] or "",
+                "razon_social": user['razon_social'] or "",
+                "direccion": user['direccion_fiscal'] or "",
+                "logo_empresa": user['logo_empresa']
+            }
+        else:
+            return JSONResponse(content={"error": "Usuario no encontrado"}, status_code=404)
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
@@ -400,6 +503,119 @@ async def subir_avatar(user_id: int = Form(...), file: UploadFile = File(...)):
         print(f"Error subiendo avatar: {e}")
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
+class EmpresaUpdate(BaseModel):
+    user_id: int
+    ruc: str
+    razon_social: str
+    direccion: str
+
+@app.post("/editar-empresa/")
+async def editar_empresa(datos: EmpresaUpdate):
+    try:
+        conn = sqlite3.connect("contabilidad.db")
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE usuarios
+            SET ruc_empresa = ?, razon_social = ?, direccion_fiscal = ?
+            WHERE id_usuario = ?
+        ''', (datos.ruc, datos.razon_social, datos.direccion, datos.user_id))
+        conn.commit()
+        conn.close()
+        return {"status": "ok"}
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.post("/subir-logo-empresa/")
+async def subir_logo_empresa(user_id: int = Form(...), file: UploadFile = File(...)):
+    try:
+        timestamp = int(time.time())
+        filename = f"logo_{user_id}_{timestamp}.png"
+        file_location = f"static/avatars/{filename}" # Usamos la misma carpeta static
+
+        with open(file_location, "wb+") as file_object:
+            shutil.copyfileobj(file.file, file_object)
+
+        relative_path = f"avatars/{filename}"
+        conn = sqlite3.connect("contabilidad.db")
+        cursor = conn.cursor()
+        cursor.execute("UPDATE usuarios SET logo_empresa = ? WHERE id_usuario = ?", (relative_path, user_id))
+        conn.commit()
+        conn.close()
+        return {"status": "ok", "logo_path": relative_path}
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+@app.get("/obtener-detalle/{tipo}/{id_registro}")
+async def obtener_detalle(tipo: str, id_registro: int):
+    try:
+        conn = sqlite3.connect("contabilidad.db")
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        datos = {}
+        items = []
+
+        if tipo == "compras":
+            cursor.execute("SELECT * FROM compras_sire WHERE id_gasto = ?", (id_registro,))
+            row = cursor.fetchone()
+            if row:
+                datos = dict(row)
+        elif tipo == "ventas":
+            cursor.execute("SELECT * FROM ventas_sire WHERE id_transaccion = ?", (id_registro,))
+            row = cursor.fetchone()
+            if row:
+                datos = dict(row)
+
+        tipo_singular = "venta" if tipo == "ventas" else "compra"
+        cursor.execute("SELECT * FROM detalle_items WHERE tipo_registro = ? AND id_padre = ?", (tipo_singular, id_registro))
+
+        items_rows = cursor.fetchall()
+        for i in items_rows:
+            items.append(dict(i))
+
+        datos['items'] = items
+
+        conn.close()
+        return datos
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.delete("/eliminar-registro/{tipo}/{id_registro}")
+async def eliminar_registro(tipo: str, id_registro: int):
+    try:
+        conn = sqlite3.connect("contabilidad.db")
+        cursor = conn.cursor()
+
+        tabla = ""
+        columna_id = ""
+        tipo_singular = ""
+
+        if tipo == "compras":
+            tabla = "compras_sire"
+            columna_id = "id_gasto"
+            tipo_singular = "compra"
+        elif tipo == "ventas":
+            tabla = "ventas_sire"
+            columna_id = "id_transaccion"
+            tipo_singular = "venta"
+        else:
+            return JSONResponse(content={"error": "Tipo inválido"}, status_code=400)
+
+        cursor.execute("DELETE FROM detalle_items WHERE tipo_registro = ? AND id_padre = ?", (tipo_singular, id_registro))
+
+        cursor.execute(f"DELETE FROM {tabla} WHERE {columna_id} = ?", (id_registro,))
+
+        if cursor.rowcount == 0:
+            conn.close()
+            return JSONResponse(content={"error": "Registro no encontrado"}, status_code=404)
+
+        conn.commit()
+        conn.close()
+        return {"status": "ok", "mensaje": "Registro eliminado"}
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
 if __name__ == "__main__":
-    print("🚀 Servidor Qonta Multi-usuario Listo...")
+    print("Servidor Qonta Multi-usuario Listo...")
     uvicorn.run(app, host="0.0.0.0", port=8000)
