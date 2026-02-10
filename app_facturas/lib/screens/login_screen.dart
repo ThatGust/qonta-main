@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:local_auth/local_auth.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../main.dart';
 import 'register_screen.dart';
 
@@ -17,13 +19,15 @@ class _LoginScreenState extends State<LoginScreen> {
   final String ipAddress = "192.168.0.2";
 
   final TextEditingController _emailController = TextEditingController();
+  final LocalAuthentication auth = LocalAuthentication();
   final TextEditingController _passController = TextEditingController();
 
   bool _isObscured = true;
   bool _isLoading = false;
   bool _isRememberedUser = false;
+
+  final _storage = const FlutterSecureStorage();
   String _nombreMostrado = "";
-  final LocalAuthentication auth = LocalAuthentication();
 
   @override
   void initState() {
@@ -39,7 +43,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() {
       if (savedName != null && lastEmail != null) {
         _isRememberedUser = true;
-        _nombreMostrado = savedName;
+        _nombreMostrado = savedName.split(' ').first;
         _emailController.text = lastEmail;
       } else {
         _isRememberedUser = false;
@@ -59,16 +63,41 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!_isRememberedUser) return;
 
     try {
+      final bool canAuthenticateWithBiometrics = await auth.canCheckBiometrics;
+      if (!canAuthenticateWithBiometrics) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Tu dispositivo no soporta biometría o no está configurada")),
+        );
+        return;
+      }
+
       bool authenticated = await auth.authenticate(
-        localizedReason: 'Ingresa a tu cuenta',
-        options: const AuthenticationOptions(biometricOnly: true),
+        localizedReason: 'Toca el sensor para ingresar a Qonta',
+        options: const AuthenticationOptions(
+          biometricOnly: true,
+          stickyAuth: true,
+        ),
       );
+
       if (authenticated) {
-        _passController.text = "123456";
-        _realizarLogin();
+        String? storedPass = await _storage.read(key: 'user_password');
+
+        if (storedPass != null && storedPass.isNotEmpty) {
+          setState(() {
+            _passController.text = storedPass;
+          });
+          _realizarLogin();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Por seguridad, ingresa tu contraseña manualmente una vez más.")),
+          );
+        }
       }
     } catch (e) {
       print("Error biometría: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error de autenticación: $e")),
+      );
     }
   }
 
@@ -88,7 +117,8 @@ class _LoginScreenState extends State<LoginScreen> {
       if (response.statusCode == 200) {
         var data = json.decode(response.body);
 
-        // Lógica de racha
+        await _storage.write(key: 'user_password', value: _passController.text);
+
         await _procesarLogicaNombre(
           data['usuario']['nombre'],
           data['usuario']['email'],
@@ -136,7 +166,7 @@ class _LoginScreenState extends State<LoginScreen> {
     await prefs.setInt('login_streak', racha);
     await prefs.setString('last_logged_user', emailActual);
 
-    if (racha >= 3) {
+    if (racha >= 1) {
       await prefs.setString('display_name_confirmed', nombreReal);
     }
   }
@@ -147,7 +177,6 @@ class _LoginScreenState extends State<LoginScreen> {
       resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
-          // 1. FONDO
           Container(
             height: double.infinity,
             width: double.infinity,
@@ -164,335 +193,279 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
 
-          // 2. MONTAÑAS
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
+          Positioned.fill(
             child: Opacity(
-              opacity: 0.2,
+              opacity: 0.7,
               child: Image.asset(
                 'assets/mountains.png',
+                fit: BoxFit.cover,
                 errorBuilder: (c, o, s) => const SizedBox(),
               ),
             ),
           ),
 
-          // 3. CONTENIDO
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutBack,
+            left: MediaQuery.of(context).viewInsets.bottom > 0 ? -150 : -20,
+            top: MediaQuery.of(context).size.height * 0.45,
+            child: Container(
+                width: 100,
+                height: 15,
+                decoration: BoxDecoration(
+                    color: QontaColors.accentYellow,
+                    borderRadius: BorderRadius.circular(10)
+                )
+            ),
+          ),
+
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutBack,
+            right: MediaQuery.of(context).viewInsets.bottom > 0 ? -150 : -20,
+            top: MediaQuery.of(context).size.height * 0.40,
+            child: Container(
+                width: 120,
+                height: 15,
+                decoration: BoxDecoration(
+                    color: QontaColors.accentYellow,
+                    borderRadius: BorderRadius.circular(10)
+                )
+            ),
+          ),
+
           SafeArea(
             child: Column(
               children: [
-                // --- ENCABEZADO CORREGIDO ---
                 Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20.0,
-                    vertical: 10.0,
-                  ), // Más margen lateral
+                  padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: CrossAxisAlignment
-                        .center, // ESTO ALINEA LOGO Y BOTÓN AL CENTRO
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // Logo
-                      SizedBox(
-                        height: 100, // Altura controlada
-                        child: Image.asset(
-                          'assets/logo.png',
-                          fit: BoxFit.fitHeight,
-                          alignment: Alignment.centerLeft,
-                          errorBuilder: (c, o, s) => const Text(
-                            "Qonta",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 30,
-                              fontWeight: FontWeight.bold,
+
+
+                      if (_isRememberedUser)
+
+                        SizedBox(
+                          height: 70,
+                          width: 170,
+                          child: OverflowBox(
+                            maxHeight: 180,
+                            maxWidth: 300,
+                            alignment: Alignment.centerLeft,
+                            child: Image.asset(
+                              'assets/logo.png',
+                              height: 160,
+                              fit: BoxFit.contain,
+                              alignment: Alignment.centerLeft,
+                              errorBuilder: (c, o, s) => const Text("Qonta", style: TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.bold)),
                             ),
                           ),
                         ),
-                      ),
 
-                      // Botón Otro Usuario
                       if (_isRememberedUser)
-                        GestureDetector(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const RegisterScreen(),
+
+                        Row(
+                          children: [
+                            SvgPicture.asset(
+                              'assets/icons/whatsapp.svg',
+                              height: 20,
+                              width: 20,
+                              colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+                            ),
+
+                            const SizedBox(width: 15),
+
+                            GestureDetector(
+                              onTap: _cambiarDeUsuario,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(30),
+                                ),
+                                child: Row(
+                                  children: const [
+                                    Text(
+                                      "Otro usuario",
+                                      style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+                                    ),
+                                    SizedBox(width: 8),
+                                    Icon(Icons.person_add_alt_1_outlined, color: Colors.white, size: 20),
+                                  ],
+                                ),
                               ),
-                            );
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16, // Un poco más ancho
-                              vertical: 8,
                             ),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(
-                                0.2,
-                              ), // Transparencia más suave
-                              borderRadius: BorderRadius.circular(
-                                30,
-                              ), // Más redondeado
-                            ),
-                            child: Row(
-                              children: const [
-                                Text(
-                                  "Otro usuario",
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                SizedBox(width: 8),
-                                Icon(
-                                  Icons.person_add_alt_1_outlined,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
-                              ],
-                            ),
-                          ),
+                          ],
                         ),
                     ],
                   ),
                 ),
 
-                // --- CONTENIDO CON SCROLL ---
                 Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      return SingleChildScrollView(
-                        physics: const BouncingScrollPhysics(),
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            // Esto obliga a la columna a ocupar al menos toda la altura disponible
-                            minHeight: constraints.maxHeight,
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                      child: Column(
+                        children: [
+                          Builder(builder: (context) {
+                            bool isKeyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
+                            return SizedBox(height: isKeyboardOpen ? 10 : 60);
+                          }),
+
+                          Column(
+                            children: [
+                              if (_isRememberedUser) ...[
+                                const Text("Hola de nuevo", style: TextStyle(color: Colors.white70, fontSize: 22)),
+                                Text(
+                                  _nombreMostrado,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(color: QontaColors.accentYellow, fontSize: 40, fontWeight: FontWeight.bold),
+                                ),
+                              ] else ...[
+                                Image.asset(
+                                  'assets/logo.png',
+                                  height: 250,
+                                  fit: BoxFit.contain,
+                                ),
+                              ],
+
+                              const SizedBox(height: 10),
+
+                              if (_isRememberedUser) ...[
+                                const Text(
+                                  "¿Qué deseas hacer?",
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                                ),
+                                const SizedBox(height: 120),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    _buildIcon(iconData: Icons.menu_book, label: "Libros"),
+                                    const SizedBox(width: 40),
+                                    _buildIcon(svgPath: 'assets/icons/scan.svg', label: "Escanear", isActive: true),
+                                    const SizedBox(width: 40),
+                                    _buildIcon(svgPath: 'assets/icons/graph.svg', label: "Informes"),
+                                  ],
+                                ),
+                              ],
+                            ],
                           ),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 20.0,
+
+                          const SizedBox(height: 40),
+
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 30),
+                            padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 30),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(25),
+                              boxShadow: [
+                                BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 15, offset: const Offset(0, 5)),
+                              ],
                             ),
                             child: Column(
-                              // "spaceBetween" empuja el primer hijo arriba y el último abajo
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                // A. GRUPO SUPERIOR (Textos e Iconos)
-                                Column(
-                                  children: [
-                                    const SizedBox(height: 20),
-                                    if (_isRememberedUser) ...[
-                                      const Text(
-                                        "Hola de nuevo",
-                                        style: TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 22,
-                                        ),
-                                      ),
-                                      Text(
-                                        _nombreMostrado,
-                                        textAlign: TextAlign.center,
-                                        style: const TextStyle(
-                                          color: QontaColors.accentYellow,
-                                          fontSize: 40,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ] else ...[
-                                      const Text(
-                                        "Bienvenido/a",
-                                        style: TextStyle(
-                                          color: QontaColors.accentYellow,
-                                          fontSize: 40,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ],
+                                if (!_isRememberedUser) ...[
+                                  TextField(
+                                    controller: _emailController,
+                                    decoration: InputDecoration(
+                                      hintText: "Correo electrónico",
+                                      prefixIcon: const Icon(Icons.email_outlined),
+                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 15),
+                                ],
+                                TextField(
+                                  controller: _passController,
+                                  obscureText: _isObscured,
+                                  decoration: InputDecoration(
+                                    hintText: "Contraseña",
+                                    prefixIcon: const Icon(Icons.lock_outline),
+                                    suffixIcon: IconButton(
+                                      icon: Icon(_isObscured ? Icons.visibility_off : Icons.visibility),
+                                      onPressed: () => setState(() => _isObscured = !_isObscured),
+                                    ),
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+                                  ),
+                                ),
 
-                                    const SizedBox(height: 15),
-
-                                    if (_isRememberedUser)
-                                      const Text(
-                                        "¿Qué deseas hacer?",
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.bold,
-                                        ),
+                                if (!_isRememberedUser) ...[
+                                  const SizedBox(height: 15),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    height: 55,
+                                    child: OutlinedButton(
+                                      onPressed: () {},
+                                      style: OutlinedButton.styleFrom(
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                                       ),
-
-                                    const SizedBox(height: 30),
-
-                                    if (_isRememberedUser)
-                                      Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
                                         children: [
-                                          _buildIcon(Icons.menu_book, "Libros"),
-                                          const SizedBox(width: 25),
-                                          _buildIcon(
-                                            Icons.document_scanner_outlined,
-                                            "Escanear",
-                                            isActive: true,
-                                          ),
-                                          const SizedBox(width: 25),
-                                          _buildIcon(
-                                            Icons.bar_chart,
-                                            "Informes",
-                                          ),
+                                          SvgPicture.asset('assets/icons/google.svg', height: 20),
+                                          const SizedBox(width: 10),
+                                          const Text("Ingresar con Google", style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
                                         ],
                                       ),
+                                    ),
+                                  ),
+                                ],
 
-                                    // Un espacio extra por seguridad visual
-                                    const SizedBox(height: 20),
+                                const SizedBox(height: 20),
+
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: SizedBox(
+                                        height: 55,
+                                        child: ElevatedButton(
+                                          onPressed: _isLoading ? null : _realizarLogin,
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: QontaColors.accentYellow,
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                                          ),
+                                          child: _isLoading
+                                              ? const CircularProgressIndicator(color: Colors.white)
+                                              : const Text("Ingresar", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                        ),
+                                      ),
+                                    ),
+                                    if (_isRememberedUser) ...[
+                                      const SizedBox(width: 15),
+                                      IconButton(
+                                        onPressed: _autenticarConHuella,
+                                        icon: const Icon(Icons.fingerprint, size: 45, color: QontaColors.accentYellow),
+                                      ),
+                                    ],
                                   ],
                                 ),
 
-                                // B. GRUPO INFERIOR (Tarjeta de Login)
-                                // Al estar al final de la columna con "spaceBetween",
-                                // se pegará al fondo
-                                Container(
-                                  margin: const EdgeInsets.only(
-                                    bottom: 30,
-                                  ), // Margen inferior aumentado
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 25,
-                                    vertical: 30,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(25),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.2),
-                                        blurRadius: 15,
-                                        offset: const Offset(0, 5),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Column(
-                                    children: [
-                                      if (!_isRememberedUser) ...[
-                                        TextField(
-                                          controller: _emailController,
-                                          decoration: InputDecoration(
-                                            hintText: "Correo electrónico",
-                                            prefixIcon: const Icon(
-                                              Icons.email_outlined,
-                                            ),
-                                            contentPadding:
-                                                const EdgeInsets.symmetric(
-                                                  vertical: 18,
-                                                ),
-                                            border: OutlineInputBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(15),
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 15),
-                                      ],
-                                      TextField(
-                                        controller: _passController,
-                                        obscureText: _isObscured,
-                                        decoration: InputDecoration(
-                                          hintText: "Contraseña",
-                                          prefixIcon: const Icon(
-                                            Icons.lock_outline,
-                                          ),
-                                          suffixIcon: IconButton(
-                                            icon: Icon(
-                                              _isObscured
-                                                  ? Icons.visibility_off
-                                                  : Icons.visibility,
-                                            ),
-                                            onPressed: () => setState(
-                                              () => _isObscured = !_isObscured,
-                                            ),
-                                          ),
-                                          contentPadding:
-                                              const EdgeInsets.symmetric(
-                                                vertical: 18,
-                                              ),
-                                          border: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              15,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 20),
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: SizedBox(
-                                              height: 55,
-                                              child: ElevatedButton(
-                                                onPressed: _isLoading
-                                                    ? null
-                                                    : _realizarLogin,
-                                                style: ElevatedButton.styleFrom(
-                                                  backgroundColor:
-                                                      QontaColors.accentYellow,
-                                                  elevation: 0,
-                                                  shape: RoundedRectangleBorder(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          15,
-                                                        ),
-                                                  ),
-                                                ),
-                                                child: _isLoading
-                                                    ? const CircularProgressIndicator(
-                                                        color: Colors.white,
-                                                      )
-                                                    : const Text(
-                                                        "Ingresar",
-                                                        style: TextStyle(
-                                                          color: Colors.white,
-                                                          fontSize: 18,
-                                                          fontWeight:
-                                                              FontWeight.bold,
-                                                        ),
-                                                      ),
-                                              ),
-                                            ),
-                                          ),
-                                          if (_isRememberedUser) ...[
-                                            const SizedBox(width: 15),
-                                            IconButton(
-                                              onPressed: _autenticarConHuella,
-                                              icon: const Icon(
-                                                Icons.fingerprint,
-                                                size: 45,
-                                                color: QontaColors.accentYellow,
-                                              ),
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                      const SizedBox(height: 15),
-                                      GestureDetector(
-                                        onTap: () {},
-                                        child: const Text(
-                                          "¿Olvidaste tu clave?",
-                                          style: TextStyle(
-                                            color: QontaColors.primaryBlue,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                                const SizedBox(height: 15),
+
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    GestureDetector(
+                                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const RegisterScreen())),
+                                      child: const Text("Registrarme", style: TextStyle(color: QontaColors.primaryBlue, fontWeight: FontWeight.bold)),
+                                    ),
+                                    GestureDetector(
+                                      onTap: () {},
+                                      child: const Text("¿Olvidaste tu clave?", style: TextStyle(color: QontaColors.primaryBlue)),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
                           ),
-                        ),
-                      );
-                    },
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -503,29 +476,53 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildIcon(IconData icon, String label, {bool isActive = false}) {
+  Widget _buildIcon({
+    IconData? iconData, // Opción A: Icono estándar de Flutter
+    String? svgPath,    // Opción B: Ruta de archivo SVG
+    required String label,
+    bool isActive = false,
+  }) {
+    const activeColor = QontaColors.accentYellow;
+    const inactiveColor = Colors.white;
+    final currentColor = isActive ? activeColor : inactiveColor;
+
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          padding: const EdgeInsets.all(
-            18,
-          ), // Más padding interno -> Bloque más grande
-          decoration: BoxDecoration(
-            border: Border.all(
-              color: isActive ? QontaColors.accentYellow : Colors.white30,
-              width: 3,
-            ), // Borde más grueso
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Icon(icon, color: Colors.white, size: 40), // Icono más grande
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            if (isActive)
+              SvgPicture.asset(
+                'assets/icons/active_border.svg',
+                height: 70,
+                width: 70,
+              ),
+
+            Padding(
+              padding: const EdgeInsets.all(10.0),
+              child: svgPath != null
+                  ? SvgPicture.asset(
+                svgPath,
+                height: 45,
+                width: 45,
+                colorFilter: ColorFilter.mode(currentColor, BlendMode.srcIn),
+              )
+                  : Icon(
+                iconData,
+                size: 45,
+                color: currentColor,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         Text(
           label,
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: currentColor,
+            fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
             fontSize: 14,
-            fontWeight: FontWeight.w500,
           ),
         ),
       ],
